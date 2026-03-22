@@ -844,12 +844,13 @@ function saveCategory() {
 
 function deleteCategory() {
   if (!confirm('このカテゴリを削除しますか？')) return;
+  var id = editingCategoryId;
   showLoading();
   closeCategoryModal();
 
   apiPost({
     action: 'deleteCategory',
-    id: editingCategoryId
+    id: id
   }).then(function() {
     return apiGet('getCategories');
   }).then(function(result) {
@@ -935,12 +936,13 @@ function saveProduct() {
 
 function deleteProduct() {
   if (!confirm('この商品を削除しますか？')) return;
+  var id = editingProdId;
   showLoading();
   closeProductModal();
 
   apiPost({
     action: 'deleteProduct',
-    id: editingProdId
+    id: id
   }).then(function() {
     return apiGet('getProducts');
   }).then(function(result) {
