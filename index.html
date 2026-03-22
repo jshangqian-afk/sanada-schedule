@@ -709,6 +709,8 @@ function saveQty() {
   showLoading();
   closeQtyModal();
 
+  console.log('saveQty called', { qty: qty, dateStr: dateStr, productId: productId });
+
   if (qty === 0) {
     apiPost({
       action: 'deleteSchedule',
