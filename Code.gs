@@ -22,6 +22,70 @@ function initializeSheets() {
   });
 }
 
+// === シートクリーンアップ（空行・重複削除） ===
+function cleanupSheets() {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+
+  // schedulesシートの空行削除と重複削除
+  var sheet = ss.getSheetByName('schedules');
+  if (sheet) {
+    var data = sheet.getDataRange().getValues();
+    var header = data[0];
+    var seen = {};
+    var cleanData = [];
+
+    for (var i = 1; i < data.length; i++) {
+      var date = data[i][0];
+      var productId = data[i][1];
+
+      // 空行スキップ
+      if (date === '' && productId === '') continue;
+
+      // 日付を正規化
+      if (date instanceof Date) {
+        date = Utilities.formatDate(date, 'Asia/Tokyo', 'yyyy-MM-dd');
+      }
+
+      // 重複チェック（date + productId で一意、後のデータを優先）
+      var key = String(date) + '_' + String(productId);
+      if (seen[key] !== undefined) {
+        // 既存を上書き（後のデータが新しい）
+        cleanData[seen[key]] = [date, productId, data[i][2], data[i][3] || '', data[i][4] || ''];
+      } else {
+        seen[key] = cleanData.length;
+        cleanData.push([date, productId, data[i][2], data[i][3] || '', data[i][4] || '']);
+      }
+    }
+
+    // シートをクリアして書き直す
+    sheet.clearContents();
+    sheet.getRange(1, 1, 1, header.length).setValues([header]);
+    sheet.getRange(1, 1, 1, header.length).setFontWeight('bold');
+    if (cleanData.length > 0) {
+      sheet.getRange(2, 1, cleanData.length, cleanData[0].length).setValues(cleanData);
+    }
+  }
+
+  // products・categoriesシートの空行削除
+  ['products', 'categories'].forEach(function(name) {
+    var s = ss.getSheetByName(name);
+    if (!s) return;
+    var d = s.getDataRange().getValues();
+    var h = d[0];
+    var rows = [];
+    for (var i = 1; i < d.length; i++) {
+      if (d[i][0] === '') continue;
+      rows.push(d[i]);
+    }
+    s.clearContents();
+    s.getRange(1, 1, 1, h.length).setValues([h]);
+    s.getRange(1, 1, 1, h.length).setFontWeight('bold');
+    if (rows.length > 0) {
+      s.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+    }
+  });
+}
+
 function getSpreadsheet() {
   return SpreadsheetApp.openById(SPREADSHEET_ID);
 }
@@ -128,13 +192,8 @@ function getSchedules(startDate, endDate) {
   var schedules = [];
 
   for (var i = 1; i < data.length; i++) {
-    var date = data[i][0];
-    if (date === '') continue;
-
-    // 日付文字列に変換
-    if (date instanceof Date) {
-      date = Utilities.formatDate(date, 'Asia/Tokyo', 'yyyy-MM-dd');
-    }
+    if (data[i][0] === '' && data[i][1] === '') continue; // 空行スキップ
+    var date = normalizeDate(data[i][0]);
 
     // 日付範囲フィルタ
     if (startDate && date < startDate) continue;
@@ -152,19 +211,26 @@ function getSchedules(startDate, endDate) {
   return { success: true, data: schedules };
 }
 
+function normalizeDate(val) {
+  if (val instanceof Date) {
+    return Utilities.formatDate(val, 'Asia/Tokyo', 'yyyy-MM-dd');
+  }
+  return String(val);
+}
+
 function saveSchedule(params) {
   var sheet = getSheet('schedules');
   var data = sheet.getDataRange().getValues();
   var now = new Date().toISOString();
   var found = false;
+  var targetDate = normalizeDate(params.date);
+  var targetProductId = String(params.productId);
 
   // 既存データを検索（date + productId で一意）
   for (var i = 1; i < data.length; i++) {
-    var date = data[i][0];
-    if (date instanceof Date) {
-      date = Utilities.formatDate(date, 'Asia/Tokyo', 'yyyy-MM-dd');
-    }
-    if (date === params.date && String(data[i][1]) === String(params.productId)) {
+    if (data[i][0] === '' && data[i][1] === '') continue; // 空行スキップ
+    var date = normalizeDate(data[i][0]);
+    if (date === targetDate && String(data[i][1]) === targetProductId) {
       // 更新
       sheet.getRange(i + 1, 3).setValue(params.quantity);
       sheet.getRange(i + 1, 4).setValue(params.note || '');
@@ -176,7 +242,7 @@ function saveSchedule(params) {
 
   if (!found) {
     // 新規追加
-    sheet.appendRow([params.date, params.productId, params.quantity, params.note || '', now]);
+    sheet.appendRow([targetDate, targetProductId, params.quantity, params.note || '', now]);
   }
 
   return { success: true };
@@ -185,13 +251,13 @@ function saveSchedule(params) {
 function deleteSchedule(params) {
   var sheet = getSheet('schedules');
   var data = sheet.getDataRange().getValues();
+  var targetDate = normalizeDate(params.date);
+  var targetProductId = String(params.productId);
 
   for (var i = 1; i < data.length; i++) {
-    var date = data[i][0];
-    if (date instanceof Date) {
-      date = Utilities.formatDate(date, 'Asia/Tokyo', 'yyyy-MM-dd');
-    }
-    if (date === params.date && String(data[i][1]) === String(params.productId)) {
+    if (data[i][0] === '' && data[i][1] === '') continue;
+    var date = normalizeDate(data[i][0]);
+    if (date === targetDate && String(data[i][1]) === targetProductId) {
       sheet.deleteRow(i + 1);
       return { success: true };
     }
