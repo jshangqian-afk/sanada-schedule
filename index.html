@@ -511,15 +511,38 @@ function apiGet(action, params) {
       url += '&' + encodeURIComponent(key) + '=' + encodeURIComponent(params[key]);
     });
   }
-  return fetch(url).then(function(r) { return r.json(); });
+  return fetch(url)
+    .then(function(r) { return r.json(); })
+    .catch(function(err) {
+      console.error('apiGet error:', action, err);
+      throw err;
+    });
 }
 
 function apiPost(data) {
+  console.log('apiPost送信:', JSON.stringify(data));
   return fetch(API_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify(data)
-  }).then(function(r) { return r.json(); });
+    body: JSON.stringify(data),
+    redirect: 'follow'
+  })
+    .then(function(r) {
+      console.log('apiPost response status:', r.status, r.type);
+      return r.text();
+    })
+    .then(function(text) {
+      console.log('apiPost response body:', text);
+      try {
+        return JSON.parse(text);
+      } catch (e) {
+        console.error('apiPost JSON parse error:', e, 'body:', text);
+        return { success: false, error: 'Invalid response' };
+      }
+    })
+    .catch(function(err) {
+      console.error('apiPost fetch error:', err);
+      throw err;
+    });
 }
 
 // ========================================
