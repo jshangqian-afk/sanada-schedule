@@ -523,7 +523,6 @@ function apiPost(data) {
   console.log('apiPost送信:', JSON.stringify(data));
   return fetch(API_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'text/plain' },
     body: JSON.stringify(data),
     redirect: 'follow'
   })
