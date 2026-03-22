@@ -59,10 +59,21 @@ function doGet(e) {
 
 // === POST リクエスト ===
 function doPost(e) {
-  var body = e.postData ? e.postData.contents : e.parameter.data;
-  var params = JSON.parse(body);
-  var action = params.action;
+  var params;
   var result;
+
+  try {
+    console.log('doPost e: ' + JSON.stringify(e));
+    params = JSON.parse(e.postData.contents);
+  } catch (err) {
+    console.log('doPost parse error: ' + err.message);
+    console.log('postData: ' + JSON.stringify(e.postData));
+    result = { success: false, error: 'Failed to parse request: ' + err.message };
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  var action = params.action;
 
   try {
     switch (action) {
