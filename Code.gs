@@ -32,22 +32,49 @@ function getSheet(name) {
 
 // === GET リクエスト ===
 function doGet(e) {
-  var action = e.parameter.action;
   var result;
 
   try {
-    switch (action) {
-      case 'getSchedules':
-        result = getSchedules(e.parameter.startDate, e.parameter.endDate);
-        break;
-      case 'getProducts':
-        result = getProducts();
-        break;
-      case 'getCategories':
-        result = getCategories();
-        break;
-      default:
-        result = { success: false, error: 'Unknown action: ' + action };
+    if (e.parameter.data) {
+      var params = JSON.parse(e.parameter.data);
+      var action = params.action;
+      switch (action) {
+        case 'saveSchedule':
+          result = saveSchedule(params);
+          break;
+        case 'deleteSchedule':
+          result = deleteSchedule(params);
+          break;
+        case 'saveProduct':
+          result = saveProduct(params);
+          break;
+        case 'deleteProduct':
+          result = deleteProduct(params);
+          break;
+        case 'saveCategory':
+          result = saveCategory(params);
+          break;
+        case 'deleteCategory':
+          result = deleteCategory(params);
+          break;
+        default:
+          result = { success: false, error: 'Unknown action: ' + action };
+      }
+    } else {
+      var action = e.parameter.action;
+      switch (action) {
+        case 'getSchedules':
+          result = getSchedules(e.parameter.startDate, e.parameter.endDate);
+          break;
+        case 'getProducts':
+          result = getProducts();
+          break;
+        case 'getCategories':
+          result = getCategories();
+          break;
+        default:
+          result = { success: false, error: 'Unknown action: ' + action };
+      }
     }
   } catch (err) {
     result = { success: false, error: err.message };
