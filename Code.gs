@@ -59,7 +59,8 @@ function doGet(e) {
 
 // === POST リクエスト ===
 function doPost(e) {
-  var params = JSON.parse(e.postData.contents);
+  var body = e.postData ? e.postData.contents : e.parameter.data;
+  var params = JSON.parse(body);
   var action = params.action;
   var result;
 
