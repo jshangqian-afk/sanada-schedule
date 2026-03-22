@@ -611,7 +611,7 @@ function renderSchedule() {
       var qty = schedule ? schedule.quantity : 0;
       var kg = 0;
       if (qty > 0 && !prod.noCalc) {
-        kg = (prod.contentG * qty * prod.coefficient) / 1000;
+        kg = ((prod.contentG + 3) * qty * prod.coefficient) / 1000;
         catKg += kg;
       }
 
@@ -652,7 +652,7 @@ function renderSchedule() {
       var qty = schedule ? schedule.quantity : 0;
       var kg = 0;
       if (qty > 0 && !prod.noCalc) {
-        kg = (prod.contentG * qty * prod.coefficient) / 1000;
+        kg = ((prod.contentG + 3) * qty * prod.coefficient) / 1000;
         ucKg += kg;
       }
       ucRows += '<div class="product-row" onclick="openQtyModal(\'' + prod.id + '\')">';
@@ -713,7 +713,7 @@ function updateCalc() {
   if (prod.noCalc) {
     calcEl.textContent = '（原料計算なし）';
   } else if (qty > 0) {
-    var kg = (prod.contentG * qty * prod.coefficient) / 1000;
+    var kg = ((prod.contentG + 3) * qty * prod.coefficient) / 1000;
     calcEl.innerHTML = '原料 <strong>' + kg.toFixed(1) + 'kg</strong>';
   } else {
     calcEl.textContent = '';
@@ -1021,7 +1021,7 @@ function copyForLine() {
 
       var kg = 0;
       if (!prod.noCalc) {
-        kg = (prod.contentG * qty * prod.coefficient) / 1000;
+        kg = ((prod.contentG + 3) * qty * prod.coefficient) / 1000;
         catKg += kg;
       }
       catLines.push('  ' + prod.name + '　× ' + qty + '個');
