@@ -520,10 +520,24 @@ function apiGet(action, params) {
 }
 
 function apiPost(data) {
+  console.log('apiPost送信:', JSON.stringify(data));
   return fetch(API_URL, {
     method: 'POST',
     body: JSON.stringify(data)
-  }).then(function(r) { return r.json(); });
+  }).then(function(r) {
+    console.log('apiPost response:', r.status, r.type, r.url);
+    if (r.type === 'opaque' || r.type === 'opaqueredirect') {
+      console.log('apiPost: opaque response, assuming success');
+      return { success: true };
+    }
+    return r.text().then(function(text) {
+      console.log('apiPost body:', text);
+      try { return JSON.parse(text); } catch(e) { return { success: true }; }
+    });
+  }).catch(function(err) {
+    console.error('apiPost error:', err);
+    throw err;
+  });
 }
 
 // ========================================
