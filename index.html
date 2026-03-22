@@ -520,14 +520,10 @@ function apiGet(action, params) {
 }
 
 function apiPost(data) {
-  console.log('apiPost送信:', JSON.stringify(data));
-  var url = API_URL + '?data=' + encodeURIComponent(JSON.stringify(data));
-  return fetch(url)
-    .then(function(r) { return r.json(); })
-    .catch(function(err) {
-      console.error('apiPost error:', err);
-      throw err;
-    });
+  return fetch(API_URL, {
+    method: 'POST',
+    body: JSON.stringify(data)
+  }).then(function(r) { return r.json(); });
 }
 
 // ========================================

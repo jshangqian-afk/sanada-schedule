@@ -32,52 +32,22 @@ function getSheet(name) {
 
 // === GET リクエスト ===
 function doGet(e) {
-  console.log('doGet called, e.parameter: ' + JSON.stringify(e.parameter));
+  var action = e.parameter.action;
   var result;
 
   try {
-    // dataパラメータがある場合は書き込み系リクエスト
-    if (e.parameter.data) {
-      var params = JSON.parse(e.parameter.data);
-      var action = params.action;
-      switch (action) {
-        case 'saveSchedule':
-          result = saveSchedule(params);
-          break;
-        case 'deleteSchedule':
-          result = deleteSchedule(params);
-          break;
-        case 'saveProduct':
-          result = saveProduct(params);
-          break;
-        case 'deleteProduct':
-          result = deleteProduct(params);
-          break;
-        case 'saveCategory':
-          result = saveCategory(params);
-          break;
-        case 'deleteCategory':
-          result = deleteCategory(params);
-          break;
-        default:
-          result = { success: false, error: 'Unknown action: ' + action };
-      }
-    } else {
-      // 通常のGETリクエスト（読み取り系）
-      var action = e.parameter.action;
-      switch (action) {
-        case 'getSchedules':
-          result = getSchedules(e.parameter.startDate, e.parameter.endDate);
-          break;
-        case 'getProducts':
-          result = getProducts();
-          break;
-        case 'getCategories':
-          result = getCategories();
-          break;
-        default:
-          result = { success: false, error: 'Unknown action: ' + action };
-      }
+    switch (action) {
+      case 'getSchedules':
+        result = getSchedules(e.parameter.startDate, e.parameter.endDate);
+        break;
+      case 'getProducts':
+        result = getProducts();
+        break;
+      case 'getCategories':
+        result = getCategories();
+        break;
+      default:
+        result = { success: false, error: 'Unknown action: ' + action };
     }
   } catch (err) {
     result = { success: false, error: err.message };
@@ -89,21 +59,9 @@ function doGet(e) {
 
 // === POST リクエスト ===
 function doPost(e) {
-  var params;
-  var result;
-
-  try {
-    console.log('doPost e: ' + JSON.stringify(e));
-    params = JSON.parse(e.postData.contents);
-  } catch (err) {
-    console.log('doPost parse error: ' + err.message);
-    console.log('postData: ' + JSON.stringify(e.postData));
-    result = { success: false, error: 'Failed to parse request: ' + err.message };
-    return ContentService.createTextOutput(JSON.stringify(result))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-
+  var params = JSON.parse(e.postData.contents);
   var action = params.action;
+  var result;
 
   try {
     switch (action) {
