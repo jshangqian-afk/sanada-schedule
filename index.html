@@ -845,12 +845,13 @@ function saveCategory() {
   var name = document.getElementById('catName').value.trim();
   if (!name) { alert('カテゴリ名を入力してください'); return; }
 
+  var id = editingCategoryId;
   showLoading();
   closeCategoryModal();
 
   apiPost({
     action: 'saveCategory',
-    id: editingCategoryId || undefined,
+    id: id || undefined,
     name: name,
     order: parseInt(document.getElementById('catOrder').value) || 0
   }).then(function() {
@@ -933,12 +934,13 @@ function saveProduct() {
   var name = document.getElementById('prodName').value.trim();
   if (!name) { alert('商品名を入力してください'); return; }
 
+  var id = editingProdId;
   showLoading();
   closeProductModal();
 
   apiPost({
     action: 'saveProduct',
-    id: editingProdId || undefined,
+    id: id || undefined,
     name: name,
     categoryId: document.getElementById('prodCategory').value,
     contentG: parseFloat(document.getElementById('prodContentG').value) || 0,
