@@ -723,6 +723,7 @@ function updateCalc() {
 function saveQty() {
   var qty = parseInt(document.getElementById('qtyInput').value) || 0;
   var dateStr = formatDate(currentDate);
+  var productId = editingProductId;
 
   showLoading();
   closeQtyModal();
@@ -731,7 +732,7 @@ function saveQty() {
     apiPost({
       action: 'deleteSchedule',
       date: dateStr,
-      productId: editingProductId
+      productId: productId
     }).then(function() {
       loadSchedules();
     }).catch(function(err) {
@@ -742,7 +743,7 @@ function saveQty() {
     apiPost({
       action: 'saveSchedule',
       date: dateStr,
-      productId: editingProductId,
+      productId: productId,
       quantity: qty
     }).then(function() {
       loadSchedules();
@@ -755,13 +756,14 @@ function saveQty() {
 
 function deleteQty() {
   var dateStr = formatDate(currentDate);
+  var productId = editingProductId;
   showLoading();
   closeQtyModal();
 
   apiPost({
     action: 'deleteSchedule',
     date: dateStr,
-    productId: editingProductId
+    productId: productId
   }).then(function() {
     loadSchedules();
   }).catch(function(err) {
