@@ -32,6 +32,7 @@ function getSheet(name) {
 
 // === GET リクエスト ===
 function doGet(e) {
+  console.log('doGet called, e.parameter: ' + JSON.stringify(e.parameter));
   var result;
 
   try {
