@@ -521,25 +521,11 @@ function apiGet(action, params) {
 
 function apiPost(data) {
   console.log('apiPost送信:', JSON.stringify(data));
-  return fetch(API_URL, {
-    method: 'POST',
-    body: JSON.stringify(data)
-  })
-    .then(function(r) {
-      console.log('apiPost response status:', r.status, r.type);
-      return r.text();
-    })
-    .then(function(text) {
-      console.log('apiPost response body:', text);
-      try {
-        return JSON.parse(text);
-      } catch (e) {
-        console.error('apiPost JSON parse error:', e, 'body:', text);
-        return { success: false, error: 'Invalid response' };
-      }
-    })
+  var url = API_URL + '?data=' + encodeURIComponent(JSON.stringify(data));
+  return fetch(url)
+    .then(function(r) { return r.json(); })
     .catch(function(err) {
-      console.error('apiPost fetch error:', err);
+      console.error('apiPost error:', err);
       throw err;
     });
 }
