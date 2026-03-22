@@ -2,6 +2,26 @@
 // スプレッドシートID
 var SPREADSHEET_ID = '1AKrhxJA3kxS7aQlnGl7R05e6MHHjHrrYBMT-vnhKXJk';
 
+// === シート初期化 ===
+function initializeSheets() {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+
+  var sheetConfigs = [
+    { name: 'schedules', headers: ['date', 'productId', 'quantity', 'note', 'updatedAt'] },
+    { name: 'products', headers: ['id', 'name', 'categoryId', 'contentG', 'coefficient', 'order', 'noCalc'] },
+    { name: 'categories', headers: ['id', 'name', 'order'] }
+  ];
+
+  sheetConfigs.forEach(function(config) {
+    var sheet = ss.getSheetByName(config.name);
+    if (!sheet) {
+      sheet = ss.insertSheet(config.name);
+      sheet.getRange(1, 1, 1, config.headers.length).setValues([config.headers]);
+      sheet.getRange(1, 1, 1, config.headers.length).setFontWeight('bold');
+    }
+  });
+}
+
 function getSpreadsheet() {
   return SpreadsheetApp.openById(SPREADSHEET_ID);
 }
