@@ -186,16 +186,23 @@ function doPost(e) {
 }
 
 // === スケジュール ===
+function normalizeDate(val) {
+  if (val instanceof Date) {
+    return Utilities.formatDate(val, 'Asia/Tokyo', 'yyyy-MM-dd');
+  }
+  return String(val);
+}
+
 function getSchedules(startDate, endDate) {
   var sheet = getSheet('schedules');
-  var data = sheet.getDataRange().getValues();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { success: true, data: [] };
+  var data = sheet.getRange(1, 1, lastRow, 5).getValues();
   var schedules = [];
 
   for (var i = 1; i < data.length; i++) {
-    if (data[i][0] === '' && data[i][1] === '') continue; // 空行スキップ
     var date = normalizeDate(data[i][0]);
 
-    // 日付範囲フィルタ
     if (startDate && date < startDate) continue;
     if (endDate && date > endDate) continue;
 
@@ -211,38 +218,35 @@ function getSchedules(startDate, endDate) {
   return { success: true, data: schedules };
 }
 
-function normalizeDate(val) {
-  if (val instanceof Date) {
-    return Utilities.formatDate(val, 'Asia/Tokyo', 'yyyy-MM-dd');
-  }
-  return String(val);
-}
-
 function saveSchedule(params) {
   var sheet = getSheet('schedules');
-  var data = sheet.getDataRange().getValues();
+  var lastRow = sheet.getLastRow();
   var now = new Date().toISOString();
   var found = false;
-  var targetDate = normalizeDate(params.date);
+  var targetDate = String(params.date);
   var targetProductId = String(params.productId);
 
-  // 既存データを検索（date + productId で一意）
-  for (var i = 1; i < data.length; i++) {
-    if (data[i][0] === '' && data[i][1] === '') continue; // 空行スキップ
-    var date = normalizeDate(data[i][0]);
-    if (date === targetDate && String(data[i][1]) === targetProductId) {
-      // 更新
-      sheet.getRange(i + 1, 3).setValue(params.quantity);
-      sheet.getRange(i + 1, 4).setValue(params.note || '');
-      sheet.getRange(i + 1, 5).setValue(now);
-      found = true;
-      break;
+  if (lastRow >= 2) {
+    var data = sheet.getRange(1, 1, lastRow, 5).getValues();
+    for (var i = 1; i < data.length; i++) {
+      var date = normalizeDate(data[i][0]);
+      if (date === targetDate && String(data[i][1]) === targetProductId) {
+        sheet.getRange(i + 1, 3).setValue(params.quantity);
+        sheet.getRange(i + 1, 4).setValue(params.note || '');
+        sheet.getRange(i + 1, 5).setValue(now);
+        found = true;
+        break;
+      }
     }
   }
 
   if (!found) {
-    // 新規追加
-    sheet.appendRow([targetDate, targetProductId, params.quantity, params.note || '', now]);
+    var newRow = lastRow + 1;
+    sheet.getRange(newRow, 1).setNumberFormat('@').setValue(targetDate);
+    sheet.getRange(newRow, 2).setValue(targetProductId);
+    sheet.getRange(newRow, 3).setValue(params.quantity);
+    sheet.getRange(newRow, 4).setValue(params.note || '');
+    sheet.getRange(newRow, 5).setValue(now);
   }
 
   return { success: true };
@@ -250,12 +254,13 @@ function saveSchedule(params) {
 
 function deleteSchedule(params) {
   var sheet = getSheet('schedules');
-  var data = sheet.getDataRange().getValues();
-  var targetDate = normalizeDate(params.date);
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { success: false, error: 'Schedule not found' };
+  var data = sheet.getRange(1, 1, lastRow, 5).getValues();
+  var targetDate = String(params.date);
   var targetProductId = String(params.productId);
 
   for (var i = 1; i < data.length; i++) {
-    if (data[i][0] === '' && data[i][1] === '') continue;
     var date = normalizeDate(data[i][0]);
     if (date === targetDate && String(data[i][1]) === targetProductId) {
       sheet.deleteRow(i + 1);
