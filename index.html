@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>KimFoods 製造スケジュール</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+:root {
+  --primary: #1a73e8;
+  --primary-dark: #1557b0;
+  --danger: #d93025;
+  --bg: #f5f5f5;
+  --card-bg: #fff;
+  --text: #202124;
+  --text-secondary: #5f6368;
+  --border: #dadce0;
+  --header-height: 56px;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 16px;
+  overflow-x: hidden;
+}
+
+/* ヘッダー */
+.header {
+  position: fixed; top: 0; left: 0; right: 0;
+  height: var(--header-height);
+  background: var(--primary);
+  color: #fff;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 12px;
+  z-index: 100;
+  box-shadow: 0 2px 4px rgba(0,0,0,.2);
+}
+.header h1 { font-size: 18px; font-weight: 600; }
+.header-actions { display: flex; gap: 8px; }
+.header-btn {
+  background: rgba(255,255,255,.2);
+  border: none; color: #fff; padding: 8px 12px;
+  border-radius: 8px; font-size: 14px; cursor: pointer;
+}
+.header-btn:active { background: rgba(255,255,255,.35); }
+
+/* メインコンテンツ */
+.main { margin-top: var(--header-height); }
+
+/* 日付ナビ */
+.date-nav {
+  position: sticky; top: var(--header-height);
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  padding: 8px 4px;
+  gap: 4px;
+  z-index: 50;
+}
+.date-nav button {
+  background: none; border: none; font-size: 24px;
+  color: var(--primary); cursor: pointer;
+  padding: 4px 8px; border-radius: 8px;
+}
+.date-nav button:active { background: #e8f0fe; }
+.date-nav .date-label {
+  font-size: 18px; font-weight: 600;
+  min-width: 180px; text-align: center;
+  cursor: pointer;
+}
+.date-nav .today-btn {
+  font-size: 13px; background: var(--primary);
+  color: #fff; padding: 6px 12px; border-radius: 16px;
+  border: none; cursor: pointer;
+}
+.date-nav .today-btn:active { background: var(--primary-dark); }
+
+/* スケジュールテーブル */
+.schedule-container { padding: 8px; }
+
+.category-section {
+  background: var(--card-bg);
+  border-radius: 12px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.1);
+  overflow: hidden;
+}
+.category-header {
+  background: #e8f0fe;
+  padding: 10px 14px;
+  font-size: 16px; font-weight: 700;
+  color: var(--primary-dark);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.category-kg { font-size: 14px; font-weight: 600; color: var(--text-secondary); }
+
+.product-row {
+  display: flex; align-items: center;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  min-height: 52px;
+}
+.product-row:last-child { border-bottom: none; }
+.product-row:active { background: #f1f3f4; }
+.product-name { flex: 1; font-size: 15px; }
+.product-qty {
+  font-size: 18px; font-weight: 700;
+  color: var(--primary); min-width: 60px; text-align: right;
+}
+.product-qty.empty { color: #bbb; font-weight: 400; }
+.product-kg {
+  font-size: 13px; color: var(--text-secondary);
+  min-width: 70px; text-align: right; margin-left: 8px;
+}
+
+/* 合計バー */
+.total-bar {
+  background: var(--primary);
+  color: #fff;
+  padding: 12px 16px;
+  text-align: center;
+  font-size: 18px; font-weight: 700;
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+/* モーダル */
+.modal-overlay {
+  display: none;
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,.5);
+  z-index: 200;
+  justify-content: center; align-items: flex-end;
+}
+.modal-overlay.active { display: flex; }
+.modal {
+  background: var(--card-bg);
+  border-radius: 20px 20px 0 0;
+  width: 100%; max-width: 500px;
+  padding: 24px 20px;
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+  animation: slideUp .25s ease-out;
+}
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+.modal-title {
+  font-size: 18px; font-weight: 700;
+  margin-bottom: 4px;
+}
+.modal-subtitle {
+  font-size: 14px; color: var(--text-secondary);
+  margin-bottom: 20px;
+}
+.modal-input-group { margin-bottom: 16px; }
+.modal-input-group label {
+  display: block; font-size: 14px; font-weight: 600;
+  margin-bottom: 6px; color: var(--text-secondary);
+}
+.modal-input-group input {
+  width: 100%; padding: 14px;
+  border: 2px solid var(--border);
+  border-radius: 12px; font-size: 22px;
+  text-align: center; outline: none;
+}
+.modal-input-group input:focus { border-color: var(--primary); }
+.modal-calc {
+  text-align: center; font-size: 16px;
+  color: var(--text-secondary); margin-bottom: 20px;
+}
+.modal-calc strong { color: var(--primary); font-size: 20px; }
+
+.modal-actions { display: flex; gap: 10px; }
+.modal-actions button {
+  flex: 1; padding: 14px;
+  border: none; border-radius: 12px;
+  font-size: 16px; font-weight: 600; cursor: pointer;
+}
+.btn-cancel { background: #f1f3f4; color: var(--text); }
+.btn-cancel:active { background: #e0e0e0; }
+.btn-save { background: var(--primary); color: #fff; }
+.btn-save:active { background: var(--primary-dark); }
+.btn-delete { background: var(--danger); color: #fff; }
+.btn-delete:active { background: #b71c1c; }
+
+/* 設定画面 */
+.settings-screen {
+  display: none;
+  margin-top: var(--header-height);
+  padding: 12px;
+}
+.settings-screen.active { display: block; }
+.settings-section {
+  background: var(--card-bg);
+  border-radius: 12px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.1);
+  overflow: hidden;
+}
+.settings-section-title {
+  padding: 12px 14px;
+  font-size: 16px; font-weight: 700;
+  background: #e8f0fe; color: var(--primary-dark);
+}
+.settings-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.settings-item:last-child { border-bottom: none; }
+.settings-item:active { background: #f1f3f4; }
+.settings-item-name { font-size: 15px; }
+.settings-item-detail { font-size: 13px; color: var(--text-secondary); }
+.add-btn {
+  display: block; width: 100%; padding: 14px;
+  background: var(--primary); color: #fff;
+  border: none; border-radius: 12px;
+  font-size: 16px; font-weight: 600;
+  cursor: pointer; margin-bottom: 12px;
+}
+.add-btn:active { background: var(--primary-dark); }
+
+/* 設定モーダル */
+.settings-modal-overlay {
+  display: none;
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,.5);
+  z-index: 200;
+  justify-content: center; align-items: center;
+}
+.settings-modal-overlay.active { display: flex; }
+.settings-modal {
+  background: var(--card-bg);
+  border-radius: 16px;
+  width: 90%; max-width: 420px;
+  padding: 24px 20px;
+  max-height: 80vh; overflow-y: auto;
+}
+.settings-modal h3 { font-size: 18px; font-weight: 700; margin-bottom: 16px; }
+.form-group { margin-bottom: 14px; }
+.form-group label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 4px; color: var(--text-secondary); }
+.form-group input, .form-group select {
+  width: 100%; padding: 12px;
+  border: 2px solid var(--border); border-radius: 10px;
+  font-size: 16px; outline: none;
+}
+.form-group input:focus, .form-group select:focus { border-color: var(--primary); }
+.checkbox-group {
+  display: flex; align-items: center; gap: 8px;
+}
+.checkbox-group input[type="checkbox"] {
+  width: 22px; height: 22px;
+}
+
+/* LINE共有 */
+.line-toast {
+  display: none;
+  position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+  background: #333; color: #fff;
+  padding: 12px 24px; border-radius: 24px;
+  font-size: 14px; z-index: 300;
+}
+.line-toast.show { display: block; animation: fadeInOut 2s ease; }
+@keyframes fadeInOut {
+  0% { opacity: 0; } 10% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; }
+}
+
+/* ローディング */
+.loading {
+  display: none;
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(255,255,255,.8);
+  z-index: 300;
+  justify-content: center; align-items: center;
+  font-size: 18px; color: var(--text-secondary);
+}
+.loading.active { display: flex; }
+.spinner {
+  width: 36px; height: 36px;
+  border: 4px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+  margin-right: 12px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- ヘッダー -->
+<div class="header">
+  <h1 id="headerTitle">製造スケジュール</h1>
+  <div class="header-actions">
+    <button class="header-btn" id="btnLine" onclick="copyForLine()">LINE共有</button>
+    <button class="header-btn" id="btnSettings" onclick="toggleSettings()">設定</button>
+  </div>
+</div>
+
+<!-- メイン（スケジュール画面） -->
+<div class="main" id="scheduleScreen">
+  <!-- 日付ナビ -->
+  <div class="date-nav">
+    <button onclick="changeDate(-1)">◀</button>
+    <div class="date-label" id="dateLabel" onclick="openDatePicker()"></div>
+    <button onclick="changeDate(1)">▶</button>
+    <button class="today-btn" onclick="goToday()">今日</button>
+  </div>
+  <input type="date" id="datePicker" style="position:absolute;opacity:0;pointer-events:none;">
+
+  <!-- スケジュール内容 -->
+  <div class="schedule-container" id="scheduleContainer"></div>
+</div>
+
+<!-- 設定画面 -->
+<div class="settings-screen" id="settingsScreen">
+  <!-- カテゴリ管理 -->
+  <div class="settings-section">
+    <div class="settings-section-title">カテゴリ管理</div>
+    <div id="categoryList"></div>
+  </div>
+  <button class="add-btn" onclick="openCategoryModal()">＋ カテゴリ追加</button>
+
+  <!-- 商品管理 -->
+  <div class="settings-section">
+    <div class="settings-section-title">商品管理</div>
+    <div id="productList"></div>
+  </div>
+  <button class="add-btn" onclick="openProductModal()">＋ 商品追加</button>
+</div>
+
+<!-- 数量入力モーダル -->
+<div class="modal-overlay" id="qtyModal">
+  <div class="modal">
+    <div class="modal-title" id="qtyModalTitle"></div>
+    <div class="modal-subtitle" id="qtyModalDate"></div>
+    <div class="modal-input-group">
+      <label>数量（個）</label>
+      <input type="number" id="qtyInput" inputmode="numeric" pattern="[0-9]*" placeholder="0"
+             oninput="updateCalc()">
+    </div>
+    <div class="modal-calc" id="qtyCalc"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeQtyModal()">キャンセル</button>
+      <button class="btn-delete" id="btnQtyDelete" onclick="deleteQty()" style="display:none">削除</button>
+      <button class="btn-save" onclick="saveQty()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- カテゴリ編集モーダル -->
+<div class="settings-modal-overlay" id="categoryModal">
+  <div class="settings-modal">
+    <h3 id="categoryModalTitle">カテゴリ追加</h3>
+    <div class="form-group">
+      <label>カテゴリ名</label>
+      <input type="text" id="catName" placeholder="例: 中辛">
+    </div>
+    <div class="form-group">
+      <label>表示順</label>
+      <input type="number" id="catOrder" inputmode="numeric" value="0">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeCategoryModal()">キャンセル</button>
+      <button class="btn-delete" id="btnCatDelete" onclick="deleteCategory()" style="display:none">削除</button>
+      <button class="btn-save" onclick="saveCategory()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 商品編集モーダル -->
+<div class="settings-modal-overlay" id="productModal">
+  <div class="settings-modal">
+    <h3 id="productModalTitle">商品追加</h3>
+    <div class="form-group">
+      <label>商品名</label>
+      <input type="text" id="prodName" placeholder="例: 330g">
+    </div>
+    <div class="form-group">
+      <label>カテゴリ</label>
+      <select id="prodCategory"></select>
+    </div>
+    <div class="form-group">
+      <label>内容量（g）</label>
+      <input type="number" id="prodContentG" inputmode="decimal" value="0">
+    </div>
+    <div class="form-group">
+      <label>係数</label>
+      <input type="number" id="prodCoeff" inputmode="decimal" step="0.01" value="0.68">
+    </div>
+    <div class="form-group">
+      <label>表示順</label>
+      <input type="number" id="prodOrder" inputmode="numeric" value="0">
+    </div>
+    <div class="form-group">
+      <div class="checkbox-group">
+        <input type="checkbox" id="prodNoCalc">
+        <label for="prodNoCalc" style="margin-bottom:0">原料計算しない</label>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeProductModal()">キャンセル</button>
+      <button class="btn-delete" id="btnProdDelete" onclick="deleteProduct()" style="display:none">削除</button>
+      <button class="btn-save" onclick="saveProduct()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- LINE共有トースト -->
+<div class="line-toast" id="lineToast">クリップボードにコピーしました</div>
+
+<!-- ローディング -->
+<div class="loading" id="loading">
+  <div class="spinner"></div>
+  読み込み中...
+</div>
+
+<script>
+// ========================================
+// GAS Web API URL（デプロイ後に設定）
+// ========================================
+var API_URL = 'https://script.google.com/macros/s/AKfycbx0xl6yIJgTMSKfXZnGUI5lHPZD-6w6uw63fBhj34If1sSejhWE8LA0tKyjP_OymZ4m7A/exec';
+
+// ========================================
+// グローバル変数
+// ========================================
+var currentDate = new Date();
+var products = [];
+var categories = [];
+var schedules = [];
+var editingProductId = null;
+var editingCategoryId = null;
+var isSettingsOpen = false;
+
+// ========================================
+// 初期化
+// ========================================
+document.addEventListener('DOMContentLoaded', function() {
+  setCurrentDate(new Date());
+  loadData();
+});
+
+function setCurrentDate(date) {
+  currentDate = new Date(date);
+  currentDate.setHours(0, 0, 0, 0);
+  updateDateLabel();
+}
+
+function updateDateLabel() {
+  var y = currentDate.getFullYear();
+  var m = currentDate.getMonth() + 1;
+  var d = currentDate.getDate();
+  var dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+  var dayName = dayNames[currentDate.getDay()];
+  document.getElementById('dateLabel').textContent = y + '/' + m + '/' + d + '（' + dayName + '）';
+}
+
+function formatDate(date) {
+  var y = date.getFullYear();
+  var m = ('0' + (date.getMonth() + 1)).slice(-2);
+  var d = ('0' + date.getDate()).slice(-2);
+  return y + '-' + m + '-' + d;
+}
+
+// ========================================
+// 日付操作
+// ========================================
+function changeDate(delta) {
+  var d = new Date(currentDate);
+  d.setDate(d.getDate() + delta);
+  setCurrentDate(d);
+  loadSchedules();
+}
+
+function goToday() {
+  setCurrentDate(new Date());
+  loadSchedules();
+}
+
+function openDatePicker() {
+  var picker = document.getElementById('datePicker');
+  picker.value = formatDate(currentDate);
+  picker.style.pointerEvents = 'auto';
+  picker.showPicker ? picker.showPicker() : picker.click();
+  picker.onchange = function() {
+    if (this.value) {
+      setCurrentDate(new Date(this.value + 'T00:00:00'));
+      loadSchedules();
+    }
+    this.style.pointerEvents = 'none';
+  };
+  picker.onblur = function() {
+    this.style.pointerEvents = 'none';
+  };
+}
+
+// ========================================
+// API通信
+// ========================================
+function showLoading() { document.getElementById('loading').classList.add('active'); }
+function hideLoading() { document.getElementById('loading').classList.remove('active'); }
+
+function apiGet(action, params) {
+  var url = API_URL + '?action=' + action;
+  if (params) {
+    Object.keys(params).forEach(function(key) {
+      url += '&' + encodeURIComponent(key) + '=' + encodeURIComponent(params[key]);
+    });
+  }
+  return fetch(url).then(function(r) { return r.json(); });
+}
+
+function apiPost(data) {
+  return fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }).then(function(r) { return r.json(); });
+}
+
+// ========================================
+// データ読み込み
+// ========================================
+function loadData() {
+  showLoading();
+  Promise.all([
+    apiGet('getProducts'),
+    apiGet('getCategories'),
+    apiGet('getSchedules', { startDate: formatDate(currentDate), endDate: formatDate(currentDate) })
+  ]).then(function(results) {
+    if (results[0].success) products = results[0].data;
+    if (results[1].success) categories = results[1].data;
+    if (results[2].success) schedules = results[2].data;
+    renderSchedule();
+    hideLoading();
+  }).catch(function(err) {
+    hideLoading();
+    alert('データの読み込みに失敗しました: ' + err.message);
+  });
+}
+
+function loadSchedules() {
+  showLoading();
+  apiGet('getSchedules', {
+    startDate: formatDate(currentDate),
+    endDate: formatDate(currentDate)
+  }).then(function(result) {
+    if (result.success) schedules = result.data;
+    renderSchedule();
+    hideLoading();
+  }).catch(function(err) {
+    hideLoading();
+    alert('スケジュールの読み込みに失敗しました: ' + err.message);
+  });
+}
+
+// ========================================
+// スケジュール表示
+// ========================================
+function renderSchedule() {
+  var container = document.getElementById('scheduleContainer');
+  var dateStr = formatDate(currentDate);
+
+  // カテゴリを表示順でソート
+  var sortedCategories = categories.slice().sort(function(a, b) { return (a.order || 0) - (b.order || 0); });
+
+  var totalKg = 0;
+  var html = '';
+
+  sortedCategories.forEach(function(cat) {
+    var catProducts = products
+      .filter(function(p) { return String(p.categoryId) === String(cat.id); })
+      .sort(function(a, b) { return (a.order || 0) - (b.order || 0); });
+
+    if (catProducts.length === 0) return;
+
+    var catKg = 0;
+    var rowsHtml = '';
+
+    catProducts.forEach(function(prod) {
+      var schedule = schedules.find(function(s) {
+        return s.date === dateStr && String(s.productId) === String(prod.id);
+      });
+      var qty = schedule ? schedule.quantity : 0;
+      var kg = 0;
+      if (qty > 0 && !prod.noCalc) {
+        kg = (prod.contentG * qty * prod.coefficient) / 1000;
+        catKg += kg;
+      }
+
+      rowsHtml += '<div class="product-row" onclick="openQtyModal(\'' + prod.id + '\')">';
+      rowsHtml += '  <div class="product-name">' + escapeHtml(prod.name) + '</div>';
+      rowsHtml += '  <div class="product-qty ' + (qty > 0 ? '' : 'empty') + '">' + (qty > 0 ? qty + '個' : '-') + '</div>';
+      if (!prod.noCalc) {
+        rowsHtml += '  <div class="product-kg">' + (qty > 0 ? kg.toFixed(1) + 'kg' : '') + '</div>';
+      } else {
+        rowsHtml += '  <div class="product-kg"></div>';
+      }
+      rowsHtml += '</div>';
+    });
+
+    totalKg += catKg;
+
+    html += '<div class="category-section">';
+    html += '  <div class="category-header">';
+    html += '    <span>【' + escapeHtml(cat.name) + '】</span>';
+    html += '    <span class="category-kg">' + catKg.toFixed(1) + 'kg</span>';
+    html += '  </div>';
+    html += rowsHtml;
+    html += '</div>';
+  });
+
+  // 未分類の商品
+  var uncategorized = products.filter(function(p) {
+    return !categories.some(function(c) { return String(c.id) === String(p.categoryId); });
+  }).sort(function(a, b) { return (a.order || 0) - (b.order || 0); });
+
+  if (uncategorized.length > 0) {
+    var ucKg = 0;
+    var ucRows = '';
+    uncategorized.forEach(function(prod) {
+      var schedule = schedules.find(function(s) {
+        return s.date === dateStr && String(s.productId) === String(prod.id);
+      });
+      var qty = schedule ? schedule.quantity : 0;
+      var kg = 0;
+      if (qty > 0 && !prod.noCalc) {
+        kg = (prod.contentG * qty * prod.coefficient) / 1000;
+        ucKg += kg;
+      }
+      ucRows += '<div class="product-row" onclick="openQtyModal(\'' + prod.id + '\')">';
+      ucRows += '  <div class="product-name">' + escapeHtml(prod.name) + '</div>';
+      ucRows += '  <div class="product-qty ' + (qty > 0 ? '' : 'empty') + '">' + (qty > 0 ? qty + '個' : '-') + '</div>';
+      if (!prod.noCalc) {
+        ucRows += '  <div class="product-kg">' + (qty > 0 ? kg.toFixed(1) + 'kg' : '') + '</div>';
+      } else {
+        ucRows += '  <div class="product-kg"></div>';
+      }
+      ucRows += '</div>';
+    });
+    totalKg += ucKg;
+    html += '<div class="category-section"><div class="category-header"><span>【未分類】</span><span class="category-kg">' + ucKg.toFixed(1) + 'kg</span></div>' + ucRows + '</div>';
+  }
+
+  // 合計バー
+  html = '<div class="total-bar">合計 ' + totalKg.toFixed(1) + 'kg</div>' + html;
+
+  container.innerHTML = html;
+}
+
+// ========================================
+// 数量入力モーダル
+// ========================================
+function openQtyModal(productId) {
+  editingProductId = productId;
+  var prod = products.find(function(p) { return String(p.id) === String(productId); });
+  if (!prod) return;
+
+  var dateStr = formatDate(currentDate);
+  var schedule = schedules.find(function(s) {
+    return s.date === dateStr && String(s.productId) === String(productId);
+  });
+
+  document.getElementById('qtyModalTitle').textContent = prod.name;
+  document.getElementById('qtyModalDate').textContent = document.getElementById('dateLabel').textContent;
+  document.getElementById('qtyInput').value = schedule ? schedule.quantity : '';
+  document.getElementById('btnQtyDelete').style.display = schedule && schedule.quantity > 0 ? '' : 'none';
+
+  updateCalc();
+  document.getElementById('qtyModal').classList.add('active');
+  setTimeout(function() { document.getElementById('qtyInput').focus(); }, 300);
+}
+
+function closeQtyModal() {
+  document.getElementById('qtyModal').classList.remove('active');
+  editingProductId = null;
+}
+
+function updateCalc() {
+  var prod = products.find(function(p) { return String(p.id) === String(editingProductId); });
+  if (!prod) return;
+
+  var qty = parseInt(document.getElementById('qtyInput').value) || 0;
+  var calcEl = document.getElementById('qtyCalc');
+
+  if (prod.noCalc) {
+    calcEl.textContent = '（原料計算なし）';
+  } else if (qty > 0) {
+    var kg = (prod.contentG * qty * prod.coefficient) / 1000;
+    calcEl.innerHTML = '原料 <strong>' + kg.toFixed(1) + 'kg</strong>';
+  } else {
+    calcEl.textContent = '';
+  }
+}
+
+function saveQty() {
+  var qty = parseInt(document.getElementById('qtyInput').value) || 0;
+  var dateStr = formatDate(currentDate);
+
+  showLoading();
+  closeQtyModal();
+
+  if (qty === 0) {
+    apiPost({
+      action: 'deleteSchedule',
+      date: dateStr,
+      productId: editingProductId
+    }).then(function() {
+      loadSchedules();
+    }).catch(function(err) {
+      hideLoading();
+      alert('削除に失敗しました: ' + err.message);
+    });
+  } else {
+    apiPost({
+      action: 'saveSchedule',
+      date: dateStr,
+      productId: editingProductId,
+      quantity: qty
+    }).then(function() {
+      loadSchedules();
+    }).catch(function(err) {
+      hideLoading();
+      alert('保存に失敗しました: ' + err.message);
+    });
+  }
+}
+
+function deleteQty() {
+  var dateStr = formatDate(currentDate);
+  showLoading();
+  closeQtyModal();
+
+  apiPost({
+    action: 'deleteSchedule',
+    date: dateStr,
+    productId: editingProductId
+  }).then(function() {
+    loadSchedules();
+  }).catch(function(err) {
+    hideLoading();
+    alert('削除に失敗しました: ' + err.message);
+  });
+}
+
+// ========================================
+// 設定画面
+// ========================================
+function toggleSettings() {
+  isSettingsOpen = !isSettingsOpen;
+  document.getElementById('scheduleScreen').style.display = isSettingsOpen ? 'none' : '';
+  document.getElementById('settingsScreen').classList.toggle('active', isSettingsOpen);
+  document.getElementById('headerTitle').textContent = isSettingsOpen ? '設定' : '製造スケジュール';
+  document.getElementById('btnSettings').textContent = isSettingsOpen ? '戻る' : '設定';
+  document.getElementById('btnLine').style.display = isSettingsOpen ? 'none' : '';
+
+  if (isSettingsOpen) {
+    renderSettings();
+  }
+}
+
+function renderSettings() {
+  // カテゴリ一覧
+  var catList = document.getElementById('categoryList');
+  var sortedCats = categories.slice().sort(function(a, b) { return (a.order || 0) - (b.order || 0); });
+  catList.innerHTML = sortedCats.map(function(cat) {
+    return '<div class="settings-item" onclick="openCategoryModal(\'' + cat.id + '\')">' +
+      '<span class="settings-item-name">' + escapeHtml(cat.name) + '</span>' +
+      '<span class="settings-item-detail">順序: ' + (cat.order || 0) + '</span></div>';
+  }).join('');
+
+  // 商品一覧
+  var prodList = document.getElementById('productList');
+  var sortedProds = products.slice().sort(function(a, b) {
+    var catA = categories.find(function(c) { return String(c.id) === String(a.categoryId); });
+    var catB = categories.find(function(c) { return String(c.id) === String(b.categoryId); });
+    var orderA = catA ? (catA.order || 0) : 999;
+    var orderB = catB ? (catB.order || 0) : 999;
+    if (orderA !== orderB) return orderA - orderB;
+    return (a.order || 0) - (b.order || 0);
+  });
+  prodList.innerHTML = sortedProds.map(function(prod) {
+    var cat = categories.find(function(c) { return String(c.id) === String(prod.categoryId); });
+    var catName = cat ? cat.name : '未分類';
+    return '<div class="settings-item" onclick="openProductModal(\'' + prod.id + '\')">' +
+      '<span class="settings-item-name">' + escapeHtml(prod.name) + '</span>' +
+      '<span class="settings-item-detail">' + escapeHtml(catName) + ' / ' + prod.contentG + 'g / ×' + prod.coefficient + '</span></div>';
+  }).join('');
+}
+
+// ========================================
+// カテゴリモーダル
+// ========================================
+function openCategoryModal(id) {
+  editingCategoryId = id || null;
+  if (id) {
+    var cat = categories.find(function(c) { return String(c.id) === String(id); });
+    if (!cat) return;
+    document.getElementById('categoryModalTitle').textContent = 'カテゴリ編集';
+    document.getElementById('catName').value = cat.name;
+    document.getElementById('catOrder').value = cat.order || 0;
+    document.getElementById('btnCatDelete').style.display = '';
+  } else {
+    document.getElementById('categoryModalTitle').textContent = 'カテゴリ追加';
+    document.getElementById('catName').value = '';
+    document.getElementById('catOrder').value = 0;
+    document.getElementById('btnCatDelete').style.display = 'none';
+  }
+  document.getElementById('categoryModal').classList.add('active');
+}
+
+function closeCategoryModal() {
+  document.getElementById('categoryModal').classList.remove('active');
+  editingCategoryId = null;
+}
+
+function saveCategory() {
+  var name = document.getElementById('catName').value.trim();
+  if (!name) { alert('カテゴリ名を入力してください'); return; }
+
+  showLoading();
+  closeCategoryModal();
+
+  apiPost({
+    action: 'saveCategory',
+    id: editingCategoryId || undefined,
+    name: name,
+    order: parseInt(document.getElementById('catOrder').value) || 0
+  }).then(function() {
+    return apiGet('getCategories');
+  }).then(function(result) {
+    if (result.success) categories = result.data;
+    renderSettings();
+    hideLoading();
+  }).catch(function(err) {
+    hideLoading();
+    alert('保存に失敗しました: ' + err.message);
+  });
+}
+
+function deleteCategory() {
+  if (!confirm('このカテゴリを削除しますか？')) return;
+  showLoading();
+  closeCategoryModal();
+
+  apiPost({
+    action: 'deleteCategory',
+    id: editingCategoryId
+  }).then(function() {
+    return apiGet('getCategories');
+  }).then(function(result) {
+    if (result.success) categories = result.data;
+    renderSettings();
+    hideLoading();
+  }).catch(function(err) {
+    hideLoading();
+    alert('削除に失敗しました: ' + err.message);
+  });
+}
+
+// ========================================
+// 商品モーダル
+// ========================================
+var editingProdId = null;
+
+function openProductModal(id) {
+  editingProdId = id || null;
+
+  // カテゴリセレクト更新
+  var select = document.getElementById('prodCategory');
+  var sortedCats = categories.slice().sort(function(a, b) { return (a.order || 0) - (b.order || 0); });
+  select.innerHTML = sortedCats.map(function(c) {
+    return '<option value="' + c.id + '">' + escapeHtml(c.name) + '</option>';
+  }).join('');
+
+  if (id) {
+    var prod = products.find(function(p) { return String(p.id) === String(id); });
+    if (!prod) return;
+    document.getElementById('productModalTitle').textContent = '商品編集';
+    document.getElementById('prodName').value = prod.name;
+    document.getElementById('prodCategory').value = prod.categoryId;
+    document.getElementById('prodContentG').value = prod.contentG;
+    document.getElementById('prodCoeff').value = prod.coefficient;
+    document.getElementById('prodOrder').value = prod.order || 0;
+    document.getElementById('prodNoCalc').checked = prod.noCalc;
+    document.getElementById('btnProdDelete').style.display = '';
+  } else {
+    document.getElementById('productModalTitle').textContent = '商品追加';
+    document.getElementById('prodName').value = '';
+    document.getElementById('prodContentG').value = 0;
+    document.getElementById('prodCoeff').value = 0.68;
+    document.getElementById('prodOrder').value = 0;
+    document.getElementById('prodNoCalc').checked = false;
+    document.getElementById('btnProdDelete').style.display = 'none';
+  }
+  document.getElementById('productModal').classList.add('active');
+}
+
+function closeProductModal() {
+  document.getElementById('productModal').classList.remove('active');
+  editingProdId = null;
+}
+
+function saveProduct() {
+  var name = document.getElementById('prodName').value.trim();
+  if (!name) { alert('商品名を入力してください'); return; }
+
+  showLoading();
+  closeProductModal();
+
+  apiPost({
+    action: 'saveProduct',
+    id: editingProdId || undefined,
+    name: name,
+    categoryId: document.getElementById('prodCategory').value,
+    contentG: parseFloat(document.getElementById('prodContentG').value) || 0,
+    coefficient: parseFloat(document.getElementById('prodCoeff').value) || 0.68,
+    order: parseInt(document.getElementById('prodOrder').value) || 0,
+    noCalc: document.getElementById('prodNoCalc').checked
+  }).then(function() {
+    return apiGet('getProducts');
+  }).then(function(result) {
+    if (result.success) products = result.data;
+    renderSettings();
+    hideLoading();
+  }).catch(function(err) {
+    hideLoading();
+    alert('保存に失敗しました: ' + err.message);
+  });
+}
+
+function deleteProduct() {
+  if (!confirm('この商品を削除しますか？')) return;
+  showLoading();
+  closeProductModal();
+
+  apiPost({
+    action: 'deleteProduct',
+    id: editingProdId
+  }).then(function() {
+    return apiGet('getProducts');
+  }).then(function(result) {
+    if (result.success) products = result.data;
+    renderSettings();
+    hideLoading();
+  }).catch(function(err) {
+    hideLoading();
+    alert('削除に失敗しました: ' + err.message);
+  });
+}
+
+// ========================================
+// LINE共有
+// ========================================
+function copyForLine() {
+  var dateStr = formatDate(currentDate);
+  var label = document.getElementById('dateLabel').textContent;
+
+  var sortedCategories = categories.slice().sort(function(a, b) { return (a.order || 0) - (b.order || 0); });
+
+  var lines = [];
+  lines.push('真田  ' + label);
+
+  var totalKg = 0;
+
+  sortedCategories.forEach(function(cat) {
+    var catProducts = products
+      .filter(function(p) { return String(p.categoryId) === String(cat.id); })
+      .sort(function(a, b) { return (a.order || 0) - (b.order || 0); });
+
+    var catKg = 0;
+    var catLines = [];
+
+    catProducts.forEach(function(prod) {
+      var schedule = schedules.find(function(s) {
+        return s.date === dateStr && String(s.productId) === String(prod.id);
+      });
+      var qty = schedule ? schedule.quantity : 0;
+      if (qty <= 0) return;
+
+      var kg = 0;
+      if (!prod.noCalc) {
+        kg = (prod.contentG * qty * prod.coefficient) / 1000;
+        catKg += kg;
+      }
+      catLines.push('  ' + prod.name + '　× ' + qty + '個');
+    });
+
+    if (catLines.length > 0) {
+      totalKg += catKg;
+      lines.push('');
+      lines.push('【' + cat.name + '】' + catKg.toFixed(1) + 'k');
+      catLines.forEach(function(l) { lines.push(l); });
+    }
+  });
+
+  // 先頭行に合計を追加
+  lines[0] += '  合計' + totalKg.toFixed(1) + 'k';
+
+  var text = lines.join('\n');
+
+  navigator.clipboard.writeText(text).then(function() {
+    var toast = document.getElementById('lineToast');
+    toast.classList.remove('show');
+    void toast.offsetWidth;
+    toast.classList.add('show');
+    setTimeout(function() { toast.classList.remove('show'); }, 2000);
+  }).catch(function() {
+    // フォールバック
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    var toast = document.getElementById('lineToast');
+    toast.classList.remove('show');
+    void toast.offsetWidth;
+    toast.classList.add('show');
+    setTimeout(function() { toast.classList.remove('show'); }, 2000);
+  });
+}
+
+// ========================================
+// ユーティリティ
+// ========================================
+function escapeHtml(str) {
+  var div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// モーダル外側タップで閉じる
+document.getElementById('qtyModal').addEventListener('click', function(e) {
+  if (e.target === this) closeQtyModal();
+});
+document.getElementById('categoryModal').addEventListener('click', function(e) {
+  if (e.target === this) closeCategoryModal();
+});
+document.getElementById('productModal').addEventListener('click', function(e) {
+  if (e.target === this) closeProductModal();
+});
+</script>
+</body>
+</html>
