@@ -934,20 +934,30 @@ function saveProduct() {
   var name = document.getElementById('prodName').value.trim();
   if (!name) { alert('商品名を入力してください'); return; }
 
+  // モーダルを閉じる前にすべての値を退避
   var id = editingProdId;
+  var categoryId = document.getElementById('prodCategory').value;
+  var contentG = parseFloat(document.getElementById('prodContentG').value) || 0;
+  var coefficient = parseFloat(document.getElementById('prodCoeff').value) || 0.68;
+  var order = parseInt(document.getElementById('prodOrder').value) || 0;
+  var noCalc = document.getElementById('prodNoCalc').checked;
+
   showLoading();
   closeProductModal();
 
-  apiPost({
+  var postData = {
     action: 'saveProduct',
-    id: id || undefined,
     name: name,
-    categoryId: document.getElementById('prodCategory').value,
-    contentG: parseFloat(document.getElementById('prodContentG').value) || 0,
-    coefficient: parseFloat(document.getElementById('prodCoeff').value) || 0.68,
-    order: parseInt(document.getElementById('prodOrder').value) || 0,
-    noCalc: document.getElementById('prodNoCalc').checked
-  }).then(function() {
+    categoryId: categoryId,
+    contentG: contentG,
+    coefficient: coefficient,
+    order: order,
+    noCalc: noCalc
+  };
+  if (id) { postData.id = id; }
+  console.log('saveProduct送信:', JSON.stringify(postData));
+
+  apiPost(postData).then(function() {
     return apiGet('getProducts');
   }).then(function(result) {
     if (result.success) products = result.data;
