@@ -455,6 +455,7 @@ var schedules = [];
 var editingProductId = null;
 var editingCategoryId = null;
 var editingCatOrderId = null;
+var categoryOrders = [];
 var isSettingsOpen = false;
 
 // ========================================
@@ -553,11 +554,13 @@ function loadData() {
   Promise.all([
     apiGet('getProducts'),
     apiGet('getCategories'),
-    apiGet('getSchedules', { startDate: formatDate(currentDate), endDate: formatDate(currentDate) })
+    apiGet('getSchedules', { startDate: formatDate(currentDate), endDate: formatDate(currentDate) }),
+    apiGet('getCategoryOrders', { date: formatDate(currentDate) })
   ]).then(function(results) {
     if (results[0].success) products = results[0].data;
     if (results[1].success) categories = results[1].data;
     if (results[2].success) schedules = results[2].data;
+    if (results[3].success) categoryOrders = results[3].data;
     renderSchedule();
     hideLoading();
   }).catch(function(err) {
@@ -568,11 +571,12 @@ function loadData() {
 
 function loadSchedules() {
   showLoading();
-  apiGet('getSchedules', {
-    startDate: formatDate(currentDate),
-    endDate: formatDate(currentDate)
-  }).then(function(result) {
-    if (result.success) schedules = result.data;
+  Promise.all([
+    apiGet('getSchedules', { startDate: formatDate(currentDate), endDate: formatDate(currentDate) }),
+    apiGet('getCategoryOrders', { date: formatDate(currentDate) })
+  ]).then(function(results) {
+    if (results[0].success) schedules = results[0].data;
+    if (results[1].success) categoryOrders = results[1].data;
     renderSchedule();
     hideLoading();
   }).catch(function(err) {
@@ -707,36 +711,13 @@ function closeQtyModal() {
 }
 
 // ========================================
-// カテゴリ作業順序（localStorage）
+// カテゴリ作業順序（スプレッドシート）
 // ========================================
-function getCatOrderKey(dateStr) {
-  return 'catOrder_' + dateStr;
-}
-
-function getCatOrders(dateStr) {
-  try {
-    var data = localStorage.getItem(getCatOrderKey(dateStr));
-    return data ? JSON.parse(data) : {};
-  } catch (e) { return {}; }
-}
-
 function getCatOrder(dateStr, catId) {
-  var orders = getCatOrders(dateStr);
-  return orders[String(catId)] || '';
-}
-
-function setCatOrder(dateStr, catId, num) {
-  var orders = getCatOrders(dateStr);
-  if (num) {
-    orders[String(catId)] = num;
-  } else {
-    delete orders[String(catId)];
-  }
-  if (Object.keys(orders).length === 0) {
-    localStorage.removeItem(getCatOrderKey(dateStr));
-  } else {
-    localStorage.setItem(getCatOrderKey(dateStr), JSON.stringify(orders));
-  }
+  var order = categoryOrders.find(function(o) {
+    return String(o.date) === String(dateStr) && String(o.categoryId) === String(catId);
+  });
+  return order ? order.orderNum : '';
 }
 
 function openCatOrderModal(catId) {
@@ -761,16 +742,66 @@ function closeCatOrderModal() {
 function saveCatOrder() {
   var num = parseInt(document.getElementById('catOrderInput').value) || 0;
   var dateStr = formatDate(currentDate);
-  setCatOrder(dateStr, editingCatOrderId, num > 0 ? num : '');
+  var catId = editingCatOrderId;
+
+  showLoading();
   closeCatOrderModal();
-  renderSchedule();
+
+  if (num > 0) {
+    apiPost({
+      action: 'saveCategoryOrder',
+      date: dateStr,
+      categoryId: catId,
+      orderNum: num
+    }).then(function() {
+      return apiGet('getCategoryOrders', { date: dateStr });
+    }).then(function(result) {
+      if (result.success) categoryOrders = result.data;
+      renderSchedule();
+      hideLoading();
+    }).catch(function(err) {
+      hideLoading();
+      alert('保存に失敗しました: ' + err.message);
+    });
+  } else {
+    apiPost({
+      action: 'deleteCategoryOrder',
+      date: dateStr,
+      categoryId: catId
+    }).then(function() {
+      return apiGet('getCategoryOrders', { date: dateStr });
+    }).then(function(result) {
+      if (result.success) categoryOrders = result.data;
+      renderSchedule();
+      hideLoading();
+    }).catch(function(err) {
+      hideLoading();
+      alert('保存に失敗しました: ' + err.message);
+    });
+  }
 }
 
 function clearCatOrder() {
   var dateStr = formatDate(currentDate);
-  setCatOrder(dateStr, editingCatOrderId, '');
+  var catId = editingCatOrderId;
+
+  showLoading();
   closeCatOrderModal();
-  renderSchedule();
+
+  apiPost({
+    action: 'deleteCategoryOrder',
+    date: dateStr,
+    categoryId: catId
+  }).then(function() {
+    return apiGet('getCategoryOrders', { date: dateStr });
+  }).then(function(result) {
+    if (result.success) categoryOrders = result.data;
+    renderSchedule();
+    hideLoading();
+  }).catch(function(err) {
+    hideLoading();
+    alert('削除に失敗しました: ' + err.message);
+  });
 }
 
 function updateCalc() {
@@ -1156,6 +1187,9 @@ document.getElementById('categoryModal').addEventListener('click', function(e) {
 });
 document.getElementById('productModal').addEventListener('click', function(e) {
   if (e.target === this) closeProductModal();
+});
+document.getElementById('catOrderModal').addEventListener('click', function(e) {
+  if (e.target === this) closeCatOrderModal();
 });
 </script>
 </body>

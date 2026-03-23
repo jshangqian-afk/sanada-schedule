@@ -98,6 +98,7 @@ body {
   color: var(--primary-dark);
   display: flex; justify-content: space-between; align-items: center;
 }
+.category-order-num { color: #d93025; margin-right: 2px; }
 .category-kg { font-size: 14px; font-weight: 600; color: var(--text-secondary); }
 
 .product-row {
@@ -196,6 +197,7 @@ var currentDate = new Date();
 var products = [];
 var categories = [];
 var schedules = [];
+var categoryOrders = [];
 var autoUpdateTimer = null;
 
 // ========================================
@@ -286,11 +288,13 @@ function loadData() {
   Promise.all([
     apiGet('getProducts'),
     apiGet('getCategories'),
-    apiGet('getSchedules', { startDate: formatDate(currentDate), endDate: formatDate(currentDate) })
+    apiGet('getSchedules', { startDate: formatDate(currentDate), endDate: formatDate(currentDate) }),
+    apiGet('getCategoryOrders', { date: formatDate(currentDate) })
   ]).then(function(results) {
     if (results[0].success) products = results[0].data;
     if (results[1].success) categories = results[1].data;
     if (results[2].success) schedules = results[2].data;
+    if (results[3].success) categoryOrders = results[3].data;
     renderSchedule();
     updateTimestamp();
     hideLoading();
@@ -301,16 +305,27 @@ function loadData() {
 }
 
 function loadSchedules() {
-  apiGet('getSchedules', {
-    startDate: formatDate(currentDate),
-    endDate: formatDate(currentDate)
-  }).then(function(result) {
-    if (result.success) schedules = result.data;
+  Promise.all([
+    apiGet('getSchedules', { startDate: formatDate(currentDate), endDate: formatDate(currentDate) }),
+    apiGet('getCategoryOrders', { date: formatDate(currentDate) })
+  ]).then(function(results) {
+    if (results[0].success) schedules = results[0].data;
+    if (results[1].success) categoryOrders = results[1].data;
     renderSchedule();
     updateTimestamp();
   }).catch(function(err) {
     document.getElementById('updateBar').textContent = '更新エラー: ' + err.message;
   });
+}
+
+// ========================================
+// カテゴリ作業順序
+// ========================================
+function getCatOrder(dateStr, catId) {
+  var order = categoryOrders.find(function(o) {
+    return String(o.date) === String(dateStr) && String(o.categoryId) === String(catId);
+  });
+  return order ? order.orderNum : '';
 }
 
 // ========================================
@@ -359,9 +374,12 @@ function renderSchedule() {
 
     totalKg += catKg;
 
+    var catOrderNum = getCatOrder(dateStr, cat.id);
+    var orderLabel = catOrderNum ? '<span class="category-order-num">' + catOrderNum + '</span>' : '';
+
     html += '<div class="category-section">';
     html += '  <div class="category-header">';
-    html += '    <span>【' + escapeHtml(cat.name) + '】</span>';
+    html += '    <span>' + orderLabel + '【' + escapeHtml(cat.name) + '】</span>';
     html += '    <span class="category-kg">' + catKg.toFixed(1) + 'kg</span>';
     html += '  </div>';
     html += rowsHtml;

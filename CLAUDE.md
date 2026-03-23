@@ -24,6 +24,7 @@ view.html（閲覧用・第二工場）
   - `schedules`：スケジュールデータ
   - `products`：商品マスタ
   - `categories`：カテゴリマスタ
+  - `categoryOrders`：カテゴリ作業順序（日付ごと）
 
 ---
 
@@ -87,6 +88,13 @@ view.html（閲覧用・第二工場）
 | B | name |
 | C | order |
 
+### categoryOrdersシート
+| 列 | 内容 |
+|---|---|
+| A | date（YYYY-MM-DD）|
+| B | categoryId |
+| C | orderNum（作業順序番号）|
+
 ---
 
 ## GAS（Code.gs）の実装
@@ -98,8 +106,8 @@ view.html（閲覧用・第二工場）
 // GETリクエスト：データ取得
 // POSTリクエスト：データ保存・更新・削除
 
-doGet(e)  → action: getSchedules, getProducts, getCategories
-doPost(e) → action: saveSchedule, deleteSchedule, saveProduct, deleteProduct, saveCategory, deleteCategory
+doGet(e)  → action: getSchedules, getProducts, getCategories, getCategoryOrders
+doPost(e) → action: saveSchedule, deleteSchedule, saveProduct, deleteProduct, saveCategory, deleteCategory, saveCategoryOrder, deleteCategoryOrder
 ```
 
 ### CORS対応

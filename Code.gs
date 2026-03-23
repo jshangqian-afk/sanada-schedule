@@ -9,7 +9,8 @@ function initializeSheets() {
   var sheetConfigs = [
     { name: 'schedules', headers: ['date', 'productId', 'quantity', 'note', 'updatedAt'] },
     { name: 'products', headers: ['id', 'name', 'categoryId', 'contentG', 'coefficient', 'order', 'noCalc'] },
-    { name: 'categories', headers: ['id', 'name', 'order'] }
+    { name: 'categories', headers: ['id', 'name', 'order'] },
+    { name: 'categoryOrders', headers: ['date', 'categoryId', 'orderNum'] }
   ];
 
   sheetConfigs.forEach(function(config) {
@@ -121,6 +122,12 @@ function doGet(e) {
         case 'deleteCategory':
           result = deleteCategory(params);
           break;
+        case 'saveCategoryOrder':
+          result = saveCategoryOrder(params);
+          break;
+        case 'deleteCategoryOrder':
+          result = deleteCategoryOrder(params);
+          break;
         default:
           result = { success: false, error: 'Unknown action: ' + action };
       }
@@ -135,6 +142,9 @@ function doGet(e) {
           break;
         case 'getCategories':
           result = getCategories();
+          break;
+        case 'getCategoryOrders':
+          result = getCategoryOrders(e.parameter.date);
           break;
         default:
           result = { success: false, error: 'Unknown action: ' + action };
@@ -173,6 +183,12 @@ function doPost(e) {
         break;
       case 'deleteCategory':
         result = deleteCategory(params);
+        break;
+      case 'saveCategoryOrder':
+        result = saveCategoryOrder(params);
+        break;
+      case 'deleteCategoryOrder':
+        result = deleteCategoryOrder(params);
         break;
       default:
         result = { success: false, error: 'Unknown action: ' + action };
@@ -381,4 +397,76 @@ function deleteCategory(params) {
     }
   }
   return { success: false, error: 'Category not found' };
+}
+
+// === カテゴリ作業順序 ===
+function getCategoryOrders(date) {
+  var sheet = getSheet('categoryOrders');
+  if (!sheet) return { success: true, data: [] };
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { success: true, data: [] };
+  var data = sheet.getRange(1, 1, lastRow, 3).getValues();
+  var orders = [];
+
+  for (var i = 1; i < data.length; i++) {
+    var d = normalizeDate(data[i][0]);
+    if (date && d !== String(date)) continue;
+    if (data[i][1] === '') continue;
+    orders.push({
+      date: d,
+      categoryId: data[i][1],
+      orderNum: data[i][2]
+    });
+  }
+
+  return { success: true, data: orders };
+}
+
+function saveCategoryOrder(params) {
+  var sheet = getSheet('categoryOrders');
+  if (!sheet) {
+    var ss = getSpreadsheet();
+    sheet = ss.insertSheet('categoryOrders');
+    sheet.getRange(1, 1, 1, 3).setValues([['date', 'categoryId', 'orderNum']]);
+    sheet.getRange(1, 1, 1, 3).setFontWeight('bold');
+  }
+  var lastRow = sheet.getLastRow();
+  var targetDate = String(params.date);
+  var targetCatId = String(params.categoryId);
+
+  if (lastRow >= 2) {
+    var data = sheet.getRange(1, 1, lastRow, 3).getValues();
+    for (var i = 1; i < data.length; i++) {
+      var d = normalizeDate(data[i][0]);
+      if (d === targetDate && String(data[i][1]) === targetCatId) {
+        sheet.getRange(i + 1, 3).setValue(params.orderNum);
+        return { success: true };
+      }
+    }
+  }
+
+  var newRow = lastRow + 1;
+  sheet.getRange(newRow, 1).setNumberFormat('@').setValue(targetDate);
+  sheet.getRange(newRow, 2).setValue(targetCatId);
+  sheet.getRange(newRow, 3).setValue(params.orderNum);
+  return { success: true };
+}
+
+function deleteCategoryOrder(params) {
+  var sheet = getSheet('categoryOrders');
+  if (!sheet) return { success: true };
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { success: true };
+  var data = sheet.getRange(1, 1, lastRow, 3).getValues();
+  var targetDate = String(params.date);
+  var targetCatId = String(params.categoryId);
+
+  for (var i = 1; i < data.length; i++) {
+    var d = normalizeDate(data[i][0]);
+    if (d === targetDate && String(data[i][1]) === targetCatId) {
+      sheet.deleteRow(i + 1);
+      return { success: true };
+    }
+  }
+  return { success: true };
 }
