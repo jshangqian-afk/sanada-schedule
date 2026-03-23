@@ -94,7 +94,10 @@ body {
   font-size: 16px; font-weight: 700;
   color: var(--primary-dark);
   display: flex; justify-content: space-between; align-items: center;
+  cursor: pointer;
 }
+.category-header:active { background: #d2e3fc; }
+.category-order-num { color: var(--danger); margin-right: 2px; }
 .category-kg { font-size: 14px; font-weight: 600; color: var(--text-secondary); }
 
 .product-row {
@@ -410,6 +413,23 @@ body {
   </div>
 </div>
 
+<!-- カテゴリ作業順序モーダル -->
+<div class="modal-overlay" id="catOrderModal">
+  <div class="modal">
+    <div class="modal-title" id="catOrderModalTitle"></div>
+    <div class="modal-subtitle">作業順序番号を入力</div>
+    <div class="modal-input-group">
+      <label>順序番号</label>
+      <input type="number" id="catOrderInput" inputmode="numeric" pattern="[0-9]*" placeholder="番号なし">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeCatOrderModal()">キャンセル</button>
+      <button class="btn-delete" onclick="clearCatOrder()">クリア</button>
+      <button class="btn-save" onclick="saveCatOrder()">保存</button>
+    </div>
+  </div>
+</div>
+
 <!-- LINE共有トースト -->
 <div class="line-toast" id="lineToast">クリップボードにコピーしました</div>
 
@@ -434,6 +454,7 @@ var categories = [];
 var schedules = [];
 var editingProductId = null;
 var editingCategoryId = null;
+var editingCatOrderId = null;
 var isSettingsOpen = false;
 
 // ========================================
@@ -607,9 +628,12 @@ function renderSchedule() {
 
     totalKg += catKg;
 
+    var catOrderNum = getCatOrder(dateStr, cat.id);
+    var orderLabel = catOrderNum ? '<span class="category-order-num">' + catOrderNum + '</span>' : '';
+
     html += '<div class="category-section">';
-    html += '  <div class="category-header">';
-    html += '    <span>【' + escapeHtml(cat.name) + '】</span>';
+    html += '  <div class="category-header" onclick="openCatOrderModal(\'' + cat.id + '\')">';
+    html += '    <span>' + orderLabel + '【' + escapeHtml(cat.name) + '】</span>';
     html += '    <span class="category-kg">' + catKg.toFixed(1) + 'kg</span>';
     html += '  </div>';
     html += rowsHtml;
@@ -680,6 +704,73 @@ function openQtyModal(productId) {
 function closeQtyModal() {
   document.getElementById('qtyModal').classList.remove('active');
   editingProductId = null;
+}
+
+// ========================================
+// カテゴリ作業順序（localStorage）
+// ========================================
+function getCatOrderKey(dateStr) {
+  return 'catOrder_' + dateStr;
+}
+
+function getCatOrders(dateStr) {
+  try {
+    var data = localStorage.getItem(getCatOrderKey(dateStr));
+    return data ? JSON.parse(data) : {};
+  } catch (e) { return {}; }
+}
+
+function getCatOrder(dateStr, catId) {
+  var orders = getCatOrders(dateStr);
+  return orders[String(catId)] || '';
+}
+
+function setCatOrder(dateStr, catId, num) {
+  var orders = getCatOrders(dateStr);
+  if (num) {
+    orders[String(catId)] = num;
+  } else {
+    delete orders[String(catId)];
+  }
+  if (Object.keys(orders).length === 0) {
+    localStorage.removeItem(getCatOrderKey(dateStr));
+  } else {
+    localStorage.setItem(getCatOrderKey(dateStr), JSON.stringify(orders));
+  }
+}
+
+function openCatOrderModal(catId) {
+  editingCatOrderId = catId;
+  var cat = categories.find(function(c) { return String(c.id) === String(catId); });
+  if (!cat) return;
+
+  var dateStr = formatDate(currentDate);
+  var current = getCatOrder(dateStr, catId);
+
+  document.getElementById('catOrderModalTitle').textContent = '【' + cat.name + '】';
+  document.getElementById('catOrderInput').value = current || '';
+  document.getElementById('catOrderModal').classList.add('active');
+  setTimeout(function() { document.getElementById('catOrderInput').focus(); }, 300);
+}
+
+function closeCatOrderModal() {
+  document.getElementById('catOrderModal').classList.remove('active');
+  editingCatOrderId = null;
+}
+
+function saveCatOrder() {
+  var num = parseInt(document.getElementById('catOrderInput').value) || 0;
+  var dateStr = formatDate(currentDate);
+  setCatOrder(dateStr, editingCatOrderId, num > 0 ? num : '');
+  closeCatOrderModal();
+  renderSchedule();
+}
+
+function clearCatOrder() {
+  var dateStr = formatDate(currentDate);
+  setCatOrder(dateStr, editingCatOrderId, '');
+  closeCatOrderModal();
+  renderSchedule();
 }
 
 function updateCalc() {
@@ -1013,7 +1104,9 @@ function copyForLine() {
     if (catLines.length > 0) {
       totalKg += catKg;
       lines.push('');
-      lines.push('【' + cat.name + '】' + catKg.toFixed(1) + 'k');
+      var catOrd = getCatOrder(dateStr, cat.id);
+      var ordPrefix = catOrd ? catOrd + ' ' : '';
+      lines.push(ordPrefix + '【' + cat.name + '】' + catKg.toFixed(1) + 'k');
       catLines.forEach(function(l) { lines.push(l); });
     }
   });
