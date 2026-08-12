@@ -17,6 +17,33 @@ Googleスプレッドシート（データベース）
 view.html（閲覧用・第二工場）
 ```
 
+## GAS情報（clasp運用）
+
+- **プロジェクト名**：KimFoods製造スケジュール（スプレッドシートに紐づくコンテナバインド型なので
+  Driveのファイル一覧には単体で出てこない。`script.google.com/home` から探す）
+- **スクリプトID**：`1orvjq6bKfqRUuJy1wCna6QzDojQag3cLUIbYBI-Nw6764dAOdmX_BykS`
+- **本番デプロイID**：`AKfycbzvzntecxYTsOOFEgyr5ZX8ikDXs7Zsx7JrpDlW42RUBW16yEuMVwsLvpg6pL15qlVLZg`
+  （index.html / view.html の `API_URL` がこのIDを指している。**変えると両方の書き換えが必要**）
+- **HEAD用デプロイ**：`AKfycbyOUB7ntBFeZWMCGlJIfHCohnYoQgYXs06hYQUNqpZQ`
+  （要ログイン。本番を触る前の動作確認に使える）
+- **GAS側のファイル名は `コード.js`**。`Code.gs` として push すると別ファイルが増えて
+  関数が二重定義になるので注意。
+
+clasp作業フォルダは **リポジトリの外**（`~/sanada-schedule-gas`）に置く。
+リポジトリ直下に `.clasp.json` を置くと index.html / view.html まで
+GASのHTMLファイルとして push されてしまう。
+
+```bash
+cd ~/sanada-schedule-gas
+cp ~/sanada-schedule/Code.gs コード.js
+clasp push -f
+clasp create-version "変更内容"
+clasp redeploy AKfycbzvzntecxYTsOOFEgyr5ZX8ikDXs7Zsx7JrpDlW42RUBW16yEuMVwsLvpg6pL15qlVLZg -V <番号>
+```
+
+`redeploy` を使えば **URLを維持したままバージョンだけ上げられる**。
+`clasp deploy`（新規デプロイ）はURLが変わるので使わない。
+
 ## Googleスプレッドシート情報
 
 - **スプレッドシートID**：1AKrhxJA3kxS7aQlnGl7R05e6MHHjHrrYBMT-vnhKXJk
