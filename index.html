@@ -115,6 +115,12 @@ body {
   color: var(--primary); min-width: 60px; text-align: right;
 }
 .product-qty.empty { color: #bbb; font-weight: 400; }
+/* 楽観的更新：まだサーバーに確定していない値 */
+.product-qty.pending, .category-order-num.pending { opacity: .45; }
+.product-qty.pending::after {
+  content: '●'; font-size: 8px; vertical-align: super;
+  margin-left: 3px; color: var(--primary);
+}
 .product-kg {
   font-size: 13px; color: var(--text-secondary);
   min-width: 70px; text-align: right; margin-left: 8px;
@@ -273,6 +279,22 @@ body {
 .line-toast.show.long { animation: fadeInOut 5s ease; }
 .line-toast.warn { background: #ef6c00; }
 .line-toast.error { background: #c62828; }
+
+/* 保存中インジケータ（画面は操作できたままにする） */
+.sync-badge {
+  display: none;
+  position: fixed; top: 8px; left: 50%; transform: translateX(-50%);
+  background: rgba(32,33,36,.88); color: #fff;
+  padding: 5px 14px 5px 10px; border-radius: 20px;
+  font-size: 12px; z-index: 400;
+  align-items: center; gap: 6px;
+}
+.sync-badge.show { display: flex; }
+.sync-badge::before {
+  content: ''; width: 11px; height: 11px;
+  border: 2px solid rgba(255,255,255,.35); border-top-color: #fff;
+  border-radius: 50%; animation: spin .8s linear infinite;
+}
 @keyframes fadeInOut {
   0% { opacity: 0; } 10% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; }
 }
@@ -299,6 +321,9 @@ body {
 </style>
 </head>
 <body>
+
+<!-- 保存中インジケータ -->
+<div class="sync-badge" id="syncBadge">保存中…</div>
 
 <!-- ヘッダー -->
 <div class="header">
@@ -694,13 +719,93 @@ function fetchDayData(dateStr) {
   });
 }
 
-// 保存レスポンスに最新データが入っていればそれを使い、無ければ読み直す
+// 保存レスポンスに最新データが入っていればそれを使い、無ければ読み直す。
+// 保存中に日付を移動していた場合は、別の日のデータで今の画面を上書きしない。
 function ensureDay(result, dateStr) {
+  if (!isCurrentDate(dateStr)) return Promise.resolve(result);
   if (result.day) { applyDay(result.day); return Promise.resolve(result); }
   if (result.recovered) return Promise.resolve(result); // verifyで既に反映済み
   return fetchDayData(dateStr).then(function(data) {
     applyDay(data);
     return result;
+  });
+}
+
+// ========================================
+// 楽観的更新
+// ========================================
+// GASの往復は5秒前後かかる。待たせずに先に画面へ反映し、裏で確定させる。
+// 確定するまで pendingEdits に持っておき、
+//   ・サーバー応答で schedules を差し替えたあとに上から重ね直す（他の保存中の値が消えないように）
+//   ・失敗したら元の値へ戻す
+var pendingEdits = {};      // key -> { date, productId, quantity }（quantity 0 は削除）
+var pendingCatOrders = {};  // key -> { date, categoryId, orderNum }（0 は削除）
+var syncingCount = 0;
+
+function isCurrentDate(dateStr) {
+  return dateStr === formatDate(currentDate);
+}
+
+function editKey(dateStr, id) {
+  return dateStr + '|' + String(id);
+}
+
+function beginSync() {
+  syncingCount++;
+  document.getElementById('syncBadge').classList.add('show');
+}
+
+function endSync() {
+  syncingCount = Math.max(0, syncingCount - 1);
+  if (syncingCount === 0) {
+    document.getElementById('syncBadge').classList.remove('show');
+  }
+}
+
+function getQty(dateStr, productId) {
+  var s = schedules.find(function(x) {
+    return x.date === dateStr && String(x.productId) === String(productId);
+  });
+  return s ? Number(s.quantity) : 0;
+}
+
+// ローカルの schedules を書き換える（qty 0 は削除）
+function applyLocalSchedule(dateStr, productId, qty) {
+  var i = -1;
+  for (var n = 0; n < schedules.length; n++) {
+    if (schedules[n].date === dateStr && String(schedules[n].productId) === String(productId)) { i = n; break; }
+  }
+  if (qty > 0) {
+    if (i >= 0) schedules[i].quantity = qty;
+    else schedules.push({ date: dateStr, productId: productId, quantity: qty, note: '', updatedAt: '' });
+  } else if (i >= 0) {
+    schedules.splice(i, 1);
+  }
+}
+
+// ローカルの categoryOrders を書き換える（num 0 は削除）
+function applyLocalCatOrder(dateStr, catId, num) {
+  var i = -1;
+  for (var n = 0; n < categoryOrders.length; n++) {
+    if (categoryOrders[n].date === dateStr && String(categoryOrders[n].categoryId) === String(catId)) { i = n; break; }
+  }
+  if (num > 0) {
+    if (i >= 0) categoryOrders[i].orderNum = num;
+    else categoryOrders.push({ date: dateStr, categoryId: catId, orderNum: num });
+  } else if (i >= 0) {
+    categoryOrders.splice(i, 1);
+  }
+}
+
+// サーバー応答を反映したあと、まだ確定していない編集を上から重ね直す
+function reapplyPending() {
+  Object.keys(pendingEdits).forEach(function(k) {
+    var e = pendingEdits[k];
+    applyLocalSchedule(e.date, e.productId, e.quantity);
+  });
+  Object.keys(pendingCatOrders).forEach(function(k) {
+    var e = pendingCatOrders[k];
+    applyLocalCatOrder(e.date, e.categoryId, e.orderNum);
   });
 }
 
@@ -721,6 +826,7 @@ function loadData() {
   showLoading();
   fetchAllData(formatDate(currentDate)).then(function(data) {
     applyAll(data);
+    reapplyPending();   // 読み込み中に保存した分を消さない
     renderSchedule();
     hideLoading();
   }).catch(function(err) {
@@ -734,6 +840,7 @@ function loadSchedules() {
   showLoading();
   fetchDayData(formatDate(currentDate)).then(function(data) {
     applyDay(data);
+    reapplyPending();   // 読み込み中に保存した分を消さない
     renderSchedule();
     hideLoading();
   }).catch(function(err) {
@@ -791,7 +898,7 @@ function renderSchedule() {
 
       rowsHtml += '<div class="product-row" onclick="openQtyModal(\'' + prod.id + '\')">';
       rowsHtml += '  <div class="product-name">' + escapeHtml(prod.name) + '</div>';
-      rowsHtml += '  <div class="product-qty ' + (qty > 0 ? '' : 'empty') + '">' + (qty > 0 ? qty + '個' : '-') + '</div>';
+      rowsHtml += '  <div class="product-qty ' + (qty > 0 ? '' : 'empty') + (pendingEdits[editKey(dateStr, prod.id)] ? ' pending' : '') + '">' + (qty > 0 ? qty + '個' : '-') + '</div>';
       if (!prod.noCalc) {
         rowsHtml += '  <div class="product-kg">' + (qty > 0 ? kg.toFixed(1) + 'kg' : '') + '</div>';
       } else {
@@ -803,7 +910,10 @@ function renderSchedule() {
     totalKg += catKg;
 
     var catOrderNum = getCatOrder(dateStr, cat.id);
-    var orderLabel = catOrderNum ? '<span class="category-order-num">' + catOrderNum + '</span>' : '';
+    var catOrderPending = pendingCatOrders[editKey(dateStr, cat.id)] ? ' pending' : '';
+    var orderLabel = catOrderNum
+      ? '<span class="category-order-num' + catOrderPending + '">' + catOrderNum + '</span>'
+      : '';
 
     html += '<div class="category-section">';
     html += '  <div class="category-header" onclick="openCatOrderModal(\'' + cat.id + '\')">';
@@ -834,7 +944,7 @@ function renderSchedule() {
       }
       ucRows += '<div class="product-row" onclick="openQtyModal(\'' + prod.id + '\')">';
       ucRows += '  <div class="product-name">' + escapeHtml(prod.name) + '</div>';
-      ucRows += '  <div class="product-qty ' + (qty > 0 ? '' : 'empty') + '">' + (qty > 0 ? qty + '個' : '-') + '</div>';
+      ucRows += '  <div class="product-qty ' + (qty > 0 ? '' : 'empty') + (pendingEdits[editKey(dateStr, prod.id)] ? ' pending' : '') + '">' + (qty > 0 ? qty + '個' : '-') + '</div>';
       if (!prod.noCalc) {
         ucRows += '  <div class="product-kg">' + (qty > 0 ? kg.toFixed(1) + 'kg' : '') + '</div>';
       } else {
@@ -912,27 +1022,33 @@ function closeCatOrderModal() {
 function saveCatOrder() {
   var num = parseInt(document.getElementById('catOrderInput').value) || 0;
   var catId = editingCatOrderId;
-  showLoading();
   closeCatOrderModal();
   writeCatOrder(formatDate(currentDate), catId, num);
 }
 
 function clearCatOrder() {
   var catId = editingCatOrderId;
-  showLoading();
   closeCatOrderModal();
   writeCatOrder(formatDate(currentDate), catId, 0);
 }
 
 // num > 0 で保存、0 で削除
 function writeCatOrder(dateStr, catId, num) {
+  var key = editKey(dateStr, catId);
+  var prevNum = getCatOrder(dateStr, catId) || 0;
+
+  pendingCatOrders[key] = { date: dateStr, categoryId: catId, orderNum: num };
+  applyLocalCatOrder(dateStr, catId, num);
+  if (isCurrentDate(dateStr)) renderSchedule();
+  beginSync();
+
   var payload = num > 0
     ? { action: 'saveCategoryOrder', date: dateStr, categoryId: catId, orderNum: num }
     : { action: 'deleteCategoryOrder', date: dateStr, categoryId: catId };
 
   var verify = function() {
     return fetchDayData(dateStr).then(function(data) {
-      applyDay(data);
+      if (isCurrentDate(dateStr)) applyDay(data);
       var hit = (data.categoryOrders || []).find(function(o) {
         return String(o.categoryId) === String(catId);
       });
@@ -943,14 +1059,18 @@ function writeCatOrder(dateStr, catId, num) {
   apiWrite(payload, verify).then(function(result) {
     return ensureDay(result, dateStr);
   }).then(function(result) {
+    delete pendingCatOrders[key];
+    reapplyPending();
     renderSchedule();
-    hideLoading();
     if (result.recovered) showToast(RECOVERED_MSG, 'warn');
   }).catch(function(err) {
-    hideLoading();
+    delete pendingCatOrders[key];
+    applyLocalCatOrder(dateStr, catId, prevNum);
+    reapplyPending();
     renderSchedule();
-    showToast((num > 0 ? '保存' : '削除') + 'に失敗しました\n' + err.message, 'error');
-  });
+    showToast((num > 0 ? '保存' : '削除') + 'に失敗しました\n' + err.message +
+      '\n表示を元に戻しました', 'error');
+  }).then(endSync, endSync);
 }
 
 function updateCalc() {
@@ -974,27 +1094,35 @@ function saveQty() {
   var qty = parseInt(document.getElementById('qtyInput').value) || 0;
   var productId = editingProductId;
 
-  showLoading();
+  // showLoading は使わない（楽観的更新で即座に反映するため）
   closeQtyModal();
   writeSchedule(formatDate(currentDate), productId, qty);
 }
 
 function deleteQty() {
   var productId = editingProductId;
-  showLoading();
   closeQtyModal();
   writeSchedule(formatDate(currentDate), productId, 0);
 }
 
 // qty > 0 で保存、0 で削除
 function writeSchedule(dateStr, productId, qty) {
+  var key = editKey(dateStr, productId);
+  var prevQty = getQty(dateStr, productId);   // 失敗したときに戻す値
+
+  // 1) 往復を待たずに画面へ反映する
+  pendingEdits[key] = { date: dateStr, productId: productId, quantity: qty };
+  applyLocalSchedule(dateStr, productId, qty);
+  if (isCurrentDate(dateStr)) renderSchedule();
+  beginSync();
+
   var payload = qty > 0
     ? { action: 'saveSchedule', date: dateStr, productId: productId, quantity: qty }
     : { action: 'deleteSchedule', date: dateStr, productId: productId };
 
   var verify = function() {
     return fetchDayData(dateStr).then(function(data) {
-      applyDay(data);
+      if (isCurrentDate(dateStr)) applyDay(data);
       var hit = (data.schedules || []).find(function(s) {
         return String(s.productId) === String(productId);
       });
@@ -1005,14 +1133,20 @@ function writeSchedule(dateStr, productId, qty) {
   apiWrite(payload, verify).then(function(result) {
     return ensureDay(result, dateStr);
   }).then(function(result) {
+    // 2) 確定。保留を外して、他に保存中の編集を重ね直す
+    delete pendingEdits[key];
+    reapplyPending();
     renderSchedule();
-    hideLoading();
     if (result.recovered) showToast(RECOVERED_MSG, 'warn');
   }).catch(function(err) {
-    hideLoading();
+    // 3) 本当に失敗。元の値に戻す
+    delete pendingEdits[key];
+    applyLocalSchedule(dateStr, productId, prevQty);
+    reapplyPending();
     renderSchedule();
-    showToast((qty > 0 ? '保存' : '削除') + 'に失敗しました\n' + err.message, 'error');
-  });
+    showToast((qty > 0 ? '保存' : '削除') + 'に失敗しました\n' + err.message +
+      '\n表示を元に戻しました', 'error');
+  }).then(endSync, endSync);
 }
 
 // ========================================
