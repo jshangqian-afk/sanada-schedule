@@ -103,12 +103,17 @@ view.html（閲覧用・第二工場）
 
 ```javascript
 // GAS Web APIのエンドポイント
-// GETリクエスト：データ取得
-// POSTリクエスト：データ保存・更新・削除
+// 実際のフロントは書き込みもGET（?data=JSON）で送っている（CORSプリフライトを避けるため）
 
-doGet(e)  → action: getSchedules, getProducts, getCategories, getCategoryOrders
+doGet(e)  → action: getAll, getDay, getSchedules, getProducts, getCategories, getCategoryOrders
+          → ?data=JSON の場合は書き込み系（下記）を実行
 doPost(e) → action: saveSchedule, deleteSchedule, saveProduct, deleteProduct, saveCategory, deleteCategory, saveCategoryOrder, deleteCategoryOrder
 ```
+
+- `getAll`（`?date=`）：products / categories / schedules / categoryOrders をまとめて返す。起動時用。
+- `getDay`（`?date=`）：schedules / categoryOrders だけ返す。日付移動・自動更新用。
+- 書き込み系のレスポンスには `day`（その日の最新データ）と、マスタ更新時は `masters` が付く。
+  クライアントは保存後に読み直す必要がない。
 
 ### CORS対応
 ```javascript
@@ -116,6 +121,42 @@ doPost(e) → action: saveSchedule, deleteSchedule, saveProduct, deleteProduct, 
 ContentService.createTextOutput(JSON.stringify(result))
   .setMimeType(ContentService.MimeType.JSON)
 ```
+
+---
+
+## ハマりどころ（2026-08-13 修正）
+
+### 「シートには保存されるのにアプリは保存に失敗しましたと出る」
+
+GAS Web Appは **①doGetでシートに書き込む → ②302で script.googleusercontent.com に
+リダイレクトして結果を返す** という2段構え。①が終わった後に②が失敗することがある
+（Googleのエラーページ＝HTMLが返る／タイムアウトする）。
+
+旧コードは `fetch(url).then(r => r.json())` だけだったので、②の失敗で
+`r.json()` が例外を投げ、**書き込み済みなのに保存失敗と表示していた**。
+
+対策：
+- レスポンスは `text()` で受けてから自分でJSONパースし、HTTPステータスとパース失敗を区別する
+- **通信エラー＝保存失敗と決めつけない。** 失敗したらシートを読み直して反映を確認し、
+  入っていれば成功として扱う（`apiWrite(payload, verify)`）
+- 書き込み自体はリトライしない（商品・カテゴリの新規追加が二重登録になるため）
+
+### GASの実行は同一ユーザーで直列化される
+
+起動時に4本のAPIを `Promise.all` で並列に投げても待ち時間は足し算になる。
+`getAll` / `getDay` で1リクエストにまとめること。1回の保存で3リクエスト飛ばすのもNG。
+
+### `alert()` は使わない
+
+`alert` はページ全体をブロックし、ダイアログを閉じるまで何も操作できなくなる。
+エラー通知は `showToast(msg, 'error' | 'warn')` を使う。
+
+### デプロイ順序
+
+`getAll` / `getDay` はCode.gs側の新アクション。フロントには未対応GAS向けの
+フォールバックを入れてあるのでどちらを先に更新しても壊れないが、
+**Code.gsを再デプロイしないと速度改善は効かない**（既存の/exec URLを維持するため、
+「デプロイを管理」→ 既存デプロイを編集 → バージョン「新しいバージョン」で更新する）。
 
 ---
 

@@ -259,20 +259,15 @@ body {
   width: 22px; height: 22px;
 }
 
-/* トースト（LINE共有・保存結果の通知） */
+/* LINE共有 */
 .line-toast {
   display: none;
   position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
   background: #333; color: #fff;
   padding: 12px 24px; border-radius: 24px;
   font-size: 14px; z-index: 300;
-  max-width: 88%; text-align: center; line-height: 1.5;
-  white-space: pre-line; box-shadow: 0 2px 12px rgba(0,0,0,.3);
 }
 .line-toast.show { display: block; animation: fadeInOut 2s ease; }
-.line-toast.show.long { animation: fadeInOut 5s ease; }
-.line-toast.warn { background: #ef6c00; }
-.line-toast.error { background: #c62828; }
 @keyframes fadeInOut {
   0% { opacity: 0; } 10% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; }
 }
@@ -531,228 +526,63 @@ function openDatePicker() {
 function showLoading() { document.getElementById('loading').classList.add('active'); }
 function hideLoading() { document.getElementById('loading').classList.remove('active'); }
 
-// トースト表示（alertはページ全体をブロックしてしまうので使わない）
-var toastTimer = null;
-function showToast(msg, level) {
-  var toast = document.getElementById('lineToast');
-  toast.textContent = msg;
-  toast.className = 'line-toast';
-  if (level) toast.classList.add(level);
-  if (level) toast.classList.add('long');
-  void toast.offsetWidth;
-  toast.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(function() {
-    toast.classList.remove('show');
-  }, level ? 5000 : 2000);
-}
-
-var API_TIMEOUT_MS = 30000;
-var RECOVERED_MSG = '保存できています（応答が遅れたためシートで確認しました）';
-
-// GASのレスポンスは 302 → script.googleusercontent.com の2段構え。
-// 遅延やリダイレクト先の404でHTMLが返ることがあるので、
-// text() で受けてから自分でJSONパースし、失敗の種類を区別できるようにする。
-function apiRequest(url) {
-  var controller = new AbortController();
-  var timer = setTimeout(function() { controller.abort(); }, API_TIMEOUT_MS);
-
-  return fetch(url, { signal: controller.signal })
-    .then(function(r) {
-      return r.text().then(function(text) { return { status: r.status, text: text }; });
-    })
-    .then(function(res) {
-      if (res.status < 200 || res.status >= 300) {
-        throw new Error('サーバー応答エラー (HTTP ' + res.status + ')');
-      }
-      var trimmed = res.text.replace(/^﻿/, '').trim();
-      if (trimmed.charAt(0) !== '{' && trimmed.charAt(0) !== '[') {
-        // Googleのエラーページ（HTML）が返ってきたケース
-        throw new Error('サーバーからJSON以外の応答が返りました');
-      }
-      try {
-        return JSON.parse(trimmed);
-      } catch (err) {
-        throw new Error('応答の解析に失敗しました');
-      }
-    })
-    .catch(function(err) {
-      if (err.name === 'AbortError') {
-        throw new Error('応答がありません（' + (API_TIMEOUT_MS / 1000) + '秒でタイムアウト）');
-      }
-      throw err;
-    })
-    .then(function(result) {
-      clearTimeout(timer);
-      return result;
-    }, function(err) {
-      clearTimeout(timer);
-      throw err;
-    });
-}
-
-function buildGetUrl(action, params) {
-  var url = API_URL + '?action=' + encodeURIComponent(action);
+function apiGet(action, params) {
+  var url = API_URL + '?action=' + action;
   if (params) {
     Object.keys(params).forEach(function(key) {
       url += '&' + encodeURIComponent(key) + '=' + encodeURIComponent(params[key]);
     });
   }
-  return url;
+  return fetch(url)
+    .then(function(r) { return r.json(); })
+    .catch(function(err) {
+      console.error('apiGet error:', action, err);
+      throw err;
+    });
 }
 
-// 読み取りは副作用がないので、失敗したら1回だけ黙って再試行する
-function apiGet(action, params) {
-  var url = buildGetUrl(action, params);
-  return apiRequest(url).catch(function(err) {
-    console.warn('apiGet retry:', action, err.message);
-    return apiRequest(url);
-  }).catch(function(err) {
-    console.error('apiGet error:', action, err);
-    throw err;
-  });
-}
-
-// 書き込み。
-// GASは「①シートに書き込む → ②302でリダイレクトして結果を返す」という順番なので、
-// ②が失敗しても①は完了している。つまり通信エラー = 保存失敗ではない。
-// そこで失敗時は決めつけずにシートを読み直し、反映されていれば成功として扱う。
-// 書き込み自体の再試行はしない（商品・カテゴリの新規追加が二重登録になるため）。
-function apiWrite(data, verify) {
+function apiPost(data) {
   var url = API_URL + '?data=' + encodeURIComponent(JSON.stringify(data));
-
-  return apiRequest(url).then(function(result) {
-    if (!result || result.success !== true) {
-      throw new Error((result && result.error) || '保存できませんでした');
-    }
-    return result;
-  }).catch(function(err) {
-    console.warn('apiWrite failed, verifying:', data.action, err.message);
-    if (!verify) throw err;
-
-    // 応答を取りこぼしただけかどうかをシートを見て確かめる
-    return verify().then(function(saved) {
-      if (saved) {
-        console.log('apiWrite: 応答は取りこぼしたが保存は完了していた', data.action);
-        return { success: true, recovered: true };
-      }
-      throw err;
-    }, function() {
-      // 確認そのものができなかった場合は元のエラーを返す
-      throw err;
-    });
-  });
-}
-
-// --- 旧GAS互換 ---
-// getAll / getDay は新しいCode.gsで追加したアクション。
-// GASを再デプロイする前にGitHub Pagesだけ更新しても壊れないよう、
-// 未対応と分かったら従来の個別アクションにフォールバックする。
-function isUnknownAction(result) {
-  return !!result && result.success === false &&
-    typeof result.error === 'string' && result.error.indexOf('Unknown action') === 0;
-}
-
-function fetchAllData(dateStr) {
-  return apiGet('getAll', { date: dateStr }).then(function(result) {
-    if (!isUnknownAction(result)) {
-      if (!result.success) throw new Error(result.error || '取得に失敗しました');
-      return result.data;
-    }
-    console.warn('getAll未対応のGASです。旧方式で取得します（Code.gsの再デプロイを推奨）');
-    return Promise.all([
-      apiGet('getProducts'),
-      apiGet('getCategories'),
-      apiGet('getSchedules', { startDate: dateStr, endDate: dateStr }),
-      apiGet('getCategoryOrders', { date: dateStr })
-    ]).then(function(r) {
-      return {
-        products: r[0].success ? r[0].data : undefined,
-        categories: r[1].success ? r[1].data : undefined,
-        schedules: r[2].success ? r[2].data : undefined,
-        categoryOrders: r[3].success ? r[3].data : undefined
-      };
-    });
-  });
-}
-
-function fetchDayData(dateStr) {
-  return apiGet('getDay', { date: dateStr }).then(function(result) {
-    if (!isUnknownAction(result)) {
-      if (!result.success) throw new Error(result.error || '取得に失敗しました');
-      return result.data;
-    }
-    return Promise.all([
-      apiGet('getSchedules', { startDate: dateStr, endDate: dateStr }),
-      apiGet('getCategoryOrders', { date: dateStr })
-    ]).then(function(r) {
-      return {
-        schedules: r[0].success ? r[0].data : undefined,
-        categoryOrders: r[1].success ? r[1].data : undefined
-      };
-    });
-  });
-}
-
-// 保存レスポンスに最新データが入っていればそれを使い、無ければ読み直す
-function ensureDay(result, dateStr) {
-  if (result.day) { applyDay(result.day); return Promise.resolve(result); }
-  if (result.recovered) return Promise.resolve(result); // verifyで既に反映済み
-  return fetchDayData(dateStr).then(function(data) {
-    applyDay(data);
-    return result;
-  });
-}
-
-function ensureMasters(result, dateStr) {
-  if (result.masters) { applyAll(result.masters); return Promise.resolve(result); }
-  if (result.recovered) return Promise.resolve(result);
-  return fetchAllData(dateStr).then(function(data) {
-    applyAll(data);
-    return result;
-  });
+  return fetch(url).then(function(r) { return r.json(); });
 }
 
 // ========================================
 // データ読み込み
 // ========================================
-// 起動時：getAll 1本でマスタと当日分をまとめて取得する
 function loadData() {
   showLoading();
-  fetchAllData(formatDate(currentDate)).then(function(data) {
-    applyAll(data);
+  Promise.all([
+    apiGet('getProducts'),
+    apiGet('getCategories'),
+    apiGet('getSchedules', { startDate: formatDate(currentDate), endDate: formatDate(currentDate) }),
+    apiGet('getCategoryOrders', { date: formatDate(currentDate) })
+  ]).then(function(results) {
+    if (results[0].success) products = results[0].data;
+    if (results[1].success) categories = results[1].data;
+    if (results[2].success) schedules = results[2].data;
+    if (results[3].success) categoryOrders = results[3].data;
     renderSchedule();
     hideLoading();
   }).catch(function(err) {
     hideLoading();
-    showToast('データの読み込みに失敗しました\n' + err.message, 'error');
+    alert('データの読み込みに失敗しました: ' + err.message);
   });
 }
 
-// 日付移動時：getDay 1本でその日の分だけ取得する
 function loadSchedules() {
   showLoading();
-  fetchDayData(formatDate(currentDate)).then(function(data) {
-    applyDay(data);
+  Promise.all([
+    apiGet('getSchedules', { startDate: formatDate(currentDate), endDate: formatDate(currentDate) }),
+    apiGet('getCategoryOrders', { date: formatDate(currentDate) })
+  ]).then(function(results) {
+    if (results[0].success) schedules = results[0].data;
+    if (results[1].success) categoryOrders = results[1].data;
     renderSchedule();
     hideLoading();
   }).catch(function(err) {
     hideLoading();
-    showToast('スケジュールの読み込みに失敗しました\n' + err.message, 'error');
+    alert('スケジュールの読み込みに失敗しました: ' + err.message);
   });
-}
-
-function applyAll(data) {
-  if (!data) return;
-  if (data.products) products = data.products;
-  if (data.categories) categories = data.categories;
-  applyDay(data);
-}
-
-function applyDay(data) {
-  if (!data) return;
-  if (data.schedules) schedules = data.schedules;
-  if (data.categoryOrders) categoryOrders = data.categoryOrders;
 }
 
 // ========================================
@@ -911,45 +741,66 @@ function closeCatOrderModal() {
 
 function saveCatOrder() {
   var num = parseInt(document.getElementById('catOrderInput').value) || 0;
+  var dateStr = formatDate(currentDate);
   var catId = editingCatOrderId;
+
   showLoading();
   closeCatOrderModal();
-  writeCatOrder(formatDate(currentDate), catId, num);
+
+  if (num > 0) {
+    apiPost({
+      action: 'saveCategoryOrder',
+      date: dateStr,
+      categoryId: catId,
+      orderNum: num
+    }).then(function() {
+      return apiGet('getCategoryOrders', { date: dateStr });
+    }).then(function(result) {
+      if (result.success) categoryOrders = result.data;
+      renderSchedule();
+      hideLoading();
+    }).catch(function(err) {
+      hideLoading();
+      alert('保存に失敗しました: ' + err.message);
+    });
+  } else {
+    apiPost({
+      action: 'deleteCategoryOrder',
+      date: dateStr,
+      categoryId: catId
+    }).then(function() {
+      return apiGet('getCategoryOrders', { date: dateStr });
+    }).then(function(result) {
+      if (result.success) categoryOrders = result.data;
+      renderSchedule();
+      hideLoading();
+    }).catch(function(err) {
+      hideLoading();
+      alert('保存に失敗しました: ' + err.message);
+    });
+  }
 }
 
 function clearCatOrder() {
+  var dateStr = formatDate(currentDate);
   var catId = editingCatOrderId;
+
   showLoading();
   closeCatOrderModal();
-  writeCatOrder(formatDate(currentDate), catId, 0);
-}
 
-// num > 0 で保存、0 で削除
-function writeCatOrder(dateStr, catId, num) {
-  var payload = num > 0
-    ? { action: 'saveCategoryOrder', date: dateStr, categoryId: catId, orderNum: num }
-    : { action: 'deleteCategoryOrder', date: dateStr, categoryId: catId };
-
-  var verify = function() {
-    return fetchDayData(dateStr).then(function(data) {
-      applyDay(data);
-      var hit = (data.categoryOrders || []).find(function(o) {
-        return String(o.categoryId) === String(catId);
-      });
-      return num > 0 ? !!(hit && Number(hit.orderNum) === num) : !hit;
-    });
-  };
-
-  apiWrite(payload, verify).then(function(result) {
-    return ensureDay(result, dateStr);
+  apiPost({
+    action: 'deleteCategoryOrder',
+    date: dateStr,
+    categoryId: catId
+  }).then(function() {
+    return apiGet('getCategoryOrders', { date: dateStr });
   }).then(function(result) {
+    if (result.success) categoryOrders = result.data;
     renderSchedule();
     hideLoading();
-    if (result.recovered) showToast(RECOVERED_MSG, 'warn');
   }).catch(function(err) {
     hideLoading();
-    renderSchedule();
-    showToast((num > 0 ? '保存' : '削除') + 'に失敗しました\n' + err.message, 'error');
+    alert('削除に失敗しました: ' + err.message);
   });
 }
 
@@ -972,46 +823,55 @@ function updateCalc() {
 
 function saveQty() {
   var qty = parseInt(document.getElementById('qtyInput').value) || 0;
+  var dateStr = formatDate(currentDate);
   var productId = editingProductId;
 
   showLoading();
   closeQtyModal();
-  writeSchedule(formatDate(currentDate), productId, qty);
+
+  console.log('saveQty called', { qty: qty, dateStr: dateStr, productId: productId });
+
+  if (qty === 0) {
+    apiPost({
+      action: 'deleteSchedule',
+      date: dateStr,
+      productId: productId
+    }).then(function() {
+      loadSchedules();
+    }).catch(function(err) {
+      hideLoading();
+      alert('削除に失敗しました: ' + err.message);
+    });
+  } else {
+    apiPost({
+      action: 'saveSchedule',
+      date: dateStr,
+      productId: productId,
+      quantity: qty
+    }).then(function() {
+      loadSchedules();
+    }).catch(function(err) {
+      hideLoading();
+      alert('保存に失敗しました: ' + err.message);
+    });
+  }
 }
 
 function deleteQty() {
+  var dateStr = formatDate(currentDate);
   var productId = editingProductId;
   showLoading();
   closeQtyModal();
-  writeSchedule(formatDate(currentDate), productId, 0);
-}
 
-// qty > 0 で保存、0 で削除
-function writeSchedule(dateStr, productId, qty) {
-  var payload = qty > 0
-    ? { action: 'saveSchedule', date: dateStr, productId: productId, quantity: qty }
-    : { action: 'deleteSchedule', date: dateStr, productId: productId };
-
-  var verify = function() {
-    return fetchDayData(dateStr).then(function(data) {
-      applyDay(data);
-      var hit = (data.schedules || []).find(function(s) {
-        return String(s.productId) === String(productId);
-      });
-      return qty > 0 ? !!(hit && Number(hit.quantity) === qty) : !hit;
-    });
-  };
-
-  apiWrite(payload, verify).then(function(result) {
-    return ensureDay(result, dateStr);
-  }).then(function(result) {
-    renderSchedule();
-    hideLoading();
-    if (result.recovered) showToast(RECOVERED_MSG, 'warn');
+  apiPost({
+    action: 'deleteSchedule',
+    date: dateStr,
+    productId: productId
+  }).then(function() {
+    loadSchedules();
   }).catch(function(err) {
     hideLoading();
-    renderSchedule();
-    showToast((qty > 0 ? '保存' : '削除') + 'に失敗しました\n' + err.message, 'error');
+    alert('削除に失敗しました: ' + err.message);
   });
 }
 
@@ -1088,28 +948,27 @@ function closeCategoryModal() {
 
 function saveCategory() {
   var name = document.getElementById('catName').value.trim();
-  if (!name) { showToast('カテゴリ名を入力してください', 'warn'); return; }
+  if (!name) { alert('カテゴリ名を入力してください'); return; }
 
   var id = editingCategoryId;
-  var order = parseInt(document.getElementById('catOrder').value) || 0;
   showLoading();
   closeCategoryModal();
 
-  var payload = { action: 'saveCategory', name: name, order: order };
-  if (id) payload.id = id;
-
-  var verify = function() {
-    return fetchAllData(formatDate(currentDate)).then(function(data) {
-      applyAll(data);
-      return (data.categories || []).some(function(c) {
-        // 更新はIDで、新規は名前で反映を確認する
-        return id ? (String(c.id) === String(id) && c.name === name)
-                  : c.name === name;
-      });
-    });
-  };
-
-  writeMaster(payload, verify, '保存');
+  apiPost({
+    action: 'saveCategory',
+    id: id || undefined,
+    name: name,
+    order: parseInt(document.getElementById('catOrder').value) || 0
+  }).then(function() {
+    return apiGet('getCategories');
+  }).then(function(result) {
+    if (result.success) categories = result.data;
+    renderSettings();
+    hideLoading();
+  }).catch(function(err) {
+    hideLoading();
+    alert('保存に失敗しました: ' + err.message);
+  });
 }
 
 function deleteCategory() {
@@ -1118,14 +977,19 @@ function deleteCategory() {
   showLoading();
   closeCategoryModal();
 
-  var verify = function() {
-    return fetchAllData(formatDate(currentDate)).then(function(data) {
-      applyAll(data);
-      return !(data.categories || []).some(function(c) { return String(c.id) === String(id); });
-    });
-  };
-
-  writeMaster({ action: 'deleteCategory', id: id }, verify, '削除');
+  apiPost({
+    action: 'deleteCategory',
+    id: id
+  }).then(function() {
+    return apiGet('getCategories');
+  }).then(function(result) {
+    if (result.success) categories = result.data;
+    renderSettings();
+    hideLoading();
+  }).catch(function(err) {
+    hideLoading();
+    alert('削除に失敗しました: ' + err.message);
+  });
 }
 
 // ========================================
@@ -1173,7 +1037,7 @@ function closeProductModal() {
 
 function saveProduct() {
   var name = document.getElementById('prodName').value.trim();
-  if (!name) { showToast('商品名を入力してください', 'warn'); return; }
+  if (!name) { alert('商品名を入力してください'); return; }
 
   // モーダルを閉じる前にすべての値を退避
   var id = editingProdId;
@@ -1198,18 +1062,16 @@ function saveProduct() {
   if (id) { postData.id = id; }
   console.log('saveProduct送信:', JSON.stringify(postData));
 
-  var verify = function() {
-    return fetchAllData(formatDate(currentDate)).then(function(data) {
-      applyAll(data);
-      return (data.products || []).some(function(p) {
-        // 更新はIDで、新規は名前で反映を確認する
-        return id ? (String(p.id) === String(id) && p.name === name)
-                  : p.name === name;
-      });
-    });
-  };
-
-  writeMaster(postData, verify, '保存');
+  apiPost(postData).then(function() {
+    return apiGet('getProducts');
+  }).then(function(result) {
+    if (result.success) products = result.data;
+    renderSettings();
+    hideLoading();
+  }).catch(function(err) {
+    hideLoading();
+    alert('保存に失敗しました: ' + err.message);
+  });
 }
 
 function deleteProduct() {
@@ -1218,29 +1080,18 @@ function deleteProduct() {
   showLoading();
   closeProductModal();
 
-  var verify = function() {
-    return fetchAllData(formatDate(currentDate)).then(function(data) {
-      applyAll(data);
-      return !(data.products || []).some(function(p) { return String(p.id) === String(id); });
-    });
-  };
-
-  writeMaster({ action: 'deleteProduct', id: id }, verify, '削除');
-}
-
-// 商品・カテゴリマスタの書き込み共通処理
-function writeMaster(payload, verify, label) {
-  apiWrite(payload, verify).then(function(result) {
-    return ensureMasters(result, formatDate(currentDate));
+  apiPost({
+    action: 'deleteProduct',
+    id: id
+  }).then(function() {
+    return apiGet('getProducts');
   }).then(function(result) {
+    if (result.success) products = result.data;
     renderSettings();
-    renderSchedule();
     hideLoading();
-    if (result.recovered) showToast(RECOVERED_MSG, 'warn');
   }).catch(function(err) {
     hideLoading();
-    renderSettings();
-    showToast(label + 'に失敗しました\n' + err.message, 'error');
+    alert('削除に失敗しました: ' + err.message);
   });
 }
 
@@ -1297,7 +1148,11 @@ function copyForLine() {
   var text = lines.join('\n');
 
   navigator.clipboard.writeText(text).then(function() {
-    showToast('クリップボードにコピーしました');
+    var toast = document.getElementById('lineToast');
+    toast.classList.remove('show');
+    void toast.offsetWidth;
+    toast.classList.add('show');
+    setTimeout(function() { toast.classList.remove('show'); }, 2000);
   }).catch(function() {
     // フォールバック
     var ta = document.createElement('textarea');
@@ -1306,7 +1161,11 @@ function copyForLine() {
     ta.select();
     document.execCommand('copy');
     document.body.removeChild(ta);
-    showToast('クリップボードにコピーしました');
+    var toast = document.getElementById('lineToast');
+    toast.classList.remove('show');
+    void toast.offsetWidth;
+    toast.classList.add('show');
+    setTimeout(function() { toast.classList.remove('show'); }, 2000);
   });
 }
 

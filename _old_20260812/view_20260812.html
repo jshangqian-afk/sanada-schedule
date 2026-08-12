@@ -252,8 +252,6 @@ function goToday() {
 function startAutoUpdate() {
   if (autoUpdateTimer) clearInterval(autoUpdateTimer);
   autoUpdateTimer = setInterval(function() {
-    // 画面が見えていないときは叩かない（GASの実行枠を無駄に消費しないため）
-    if (document.hidden) return;
     loadSchedules();
   }, 60000);
 }
@@ -272,133 +270,31 @@ function updateTimestamp() {
 function showLoading() { document.getElementById('loading').classList.add('active'); }
 function hideLoading() { document.getElementById('loading').classList.remove('active'); }
 
-var API_TIMEOUT_MS = 30000;
-
-// GASのレスポンスは 302 → script.googleusercontent.com の2段構え。
-// 遅延やリダイレクト先の404でHTMLが返ることがあるので、
-// text() で受けてから自分でJSONパースする。
-function apiRequest(url) {
-  var controller = new AbortController();
-  var timer = setTimeout(function() { controller.abort(); }, API_TIMEOUT_MS);
-
-  return fetch(url, { signal: controller.signal })
-    .then(function(r) {
-      return r.text().then(function(text) { return { status: r.status, text: text }; });
-    })
-    .then(function(res) {
-      if (res.status < 200 || res.status >= 300) {
-        throw new Error('サーバー応答エラー (HTTP ' + res.status + ')');
-      }
-      var trimmed = res.text.replace(/^﻿/, '').trim();
-      if (trimmed.charAt(0) !== '{' && trimmed.charAt(0) !== '[') {
-        throw new Error('サーバーからJSON以外の応答が返りました');
-      }
-      try {
-        return JSON.parse(trimmed);
-      } catch (err) {
-        throw new Error('応答の解析に失敗しました');
-      }
-    })
-    .catch(function(err) {
-      if (err.name === 'AbortError') {
-        throw new Error('応答がありません（' + (API_TIMEOUT_MS / 1000) + '秒でタイムアウト）');
-      }
-      throw err;
-    })
-    .then(function(result) {
-      clearTimeout(timer);
-      return result;
-    }, function(err) {
-      clearTimeout(timer);
-      throw err;
-    });
-}
-
-// 読み取りは副作用がないので、失敗したら1回だけ再試行する
 function apiGet(action, params) {
-  var url = API_URL + '?action=' + encodeURIComponent(action);
+  var url = API_URL + '?action=' + action;
   if (params) {
     Object.keys(params).forEach(function(key) {
       url += '&' + encodeURIComponent(key) + '=' + encodeURIComponent(params[key]);
     });
   }
-  return apiRequest(url).catch(function(err) {
-    console.warn('apiGet retry:', action, err.message);
-    return apiRequest(url);
-  });
+  return fetch(url).then(function(r) { return r.json(); });
 }
 
 // ========================================
 // データ読み込み
 // ========================================
-function applyAll(data) {
-  if (!data) return;
-  if (data.products) products = data.products;
-  if (data.categories) categories = data.categories;
-  applyDay(data);
-}
-
-function applyDay(data) {
-  if (!data) return;
-  if (data.schedules) schedules = data.schedules;
-  if (data.categoryOrders) categoryOrders = data.categoryOrders;
-}
-
-// --- 旧GAS互換 ---
-// getAll / getDay は新しいCode.gsで追加したアクション。
-// GASを再デプロイする前にGitHub Pagesだけ更新しても壊れないよう、
-// 未対応と分かったら従来の個別アクションにフォールバックする。
-function isUnknownAction(result) {
-  return !!result && result.success === false &&
-    typeof result.error === 'string' && result.error.indexOf('Unknown action') === 0;
-}
-
-function fetchAllData(dateStr) {
-  return apiGet('getAll', { date: dateStr }).then(function(result) {
-    if (!isUnknownAction(result)) {
-      if (!result.success) throw new Error(result.error || '取得に失敗しました');
-      return result.data;
-    }
-    console.warn('getAll未対応のGASです。旧方式で取得します（Code.gsの再デプロイを推奨）');
-    return Promise.all([
-      apiGet('getProducts'),
-      apiGet('getCategories'),
-      apiGet('getSchedules', { startDate: dateStr, endDate: dateStr }),
-      apiGet('getCategoryOrders', { date: dateStr })
-    ]).then(function(r) {
-      return {
-        products: r[0].success ? r[0].data : undefined,
-        categories: r[1].success ? r[1].data : undefined,
-        schedules: r[2].success ? r[2].data : undefined,
-        categoryOrders: r[3].success ? r[3].data : undefined
-      };
-    });
-  });
-}
-
-function fetchDayData(dateStr) {
-  return apiGet('getDay', { date: dateStr }).then(function(result) {
-    if (!isUnknownAction(result)) {
-      if (!result.success) throw new Error(result.error || '取得に失敗しました');
-      return result.data;
-    }
-    return Promise.all([
-      apiGet('getSchedules', { startDate: dateStr, endDate: dateStr }),
-      apiGet('getCategoryOrders', { date: dateStr })
-    ]).then(function(r) {
-      return {
-        schedules: r[0].success ? r[0].data : undefined,
-        categoryOrders: r[1].success ? r[1].data : undefined
-      };
-    });
-  });
-}
-
-// 起動時：getAll 1本でマスタと当日分をまとめて取得する
 function loadData() {
   showLoading();
-  fetchAllData(formatDate(currentDate)).then(function(data) {
-    applyAll(data);
+  Promise.all([
+    apiGet('getProducts'),
+    apiGet('getCategories'),
+    apiGet('getSchedules', { startDate: formatDate(currentDate), endDate: formatDate(currentDate) }),
+    apiGet('getCategoryOrders', { date: formatDate(currentDate) })
+  ]).then(function(results) {
+    if (results[0].success) products = results[0].data;
+    if (results[1].success) categories = results[1].data;
+    if (results[2].success) schedules = results[2].data;
+    if (results[3].success) categoryOrders = results[3].data;
     renderSchedule();
     updateTimestamp();
     hideLoading();
@@ -408,10 +304,13 @@ function loadData() {
   });
 }
 
-// 日付移動・自動更新時：getDay 1本でその日の分だけ取得する
 function loadSchedules() {
-  fetchDayData(formatDate(currentDate)).then(function(data) {
-    applyDay(data);
+  Promise.all([
+    apiGet('getSchedules', { startDate: formatDate(currentDate), endDate: formatDate(currentDate) }),
+    apiGet('getCategoryOrders', { date: formatDate(currentDate) })
+  ]).then(function(results) {
+    if (results[0].success) schedules = results[0].data;
+    if (results[1].success) categoryOrders = results[1].data;
     renderSchedule();
     updateTimestamp();
   }).catch(function(err) {

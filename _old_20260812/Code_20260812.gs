@@ -87,15 +87,8 @@ function cleanupSheets() {
   });
 }
 
-// 1回の実行内でスプレッドシートを開き直さないようキャッシュする
-// （getAll のようにシートを複数読むアクションで openById の回数を1回に抑える）
-var _ssCache = null;
-
 function getSpreadsheet() {
-  if (!_ssCache) {
-    _ssCache = SpreadsheetApp.openById(SPREADSHEET_ID);
-  }
-  return _ssCache;
+  return SpreadsheetApp.openById(SPREADSHEET_ID);
 }
 
 function getSheet(name) {
@@ -138,18 +131,9 @@ function doGet(e) {
         default:
           result = { success: false, error: 'Unknown action: ' + action };
       }
-      // 書き込みが成功したら、同じ実行のうちに最新データも返す。
-      // クライアントが保存後に読み直すための2回目のリクエストを不要にする。
-      result = attachRefresh(result, params);
     } else {
       var action = e.parameter.action;
       switch (action) {
-        case 'getAll':
-          result = getAll(e.parameter.date);
-          break;
-        case 'getDay':
-          result = getDay(e.parameter.date);
-          break;
         case 'getSchedules':
           result = getSchedules(e.parameter.startDate, e.parameter.endDate);
           break;
@@ -209,68 +193,12 @@ function doPost(e) {
       default:
         result = { success: false, error: 'Unknown action: ' + action };
     }
-    result = attachRefresh(result, params);
   } catch (err) {
     result = { success: false, error: err.message };
   }
 
   return ContentService.createTextOutput(JSON.stringify(result))
     .setMimeType(ContentService.MimeType.JSON);
-}
-
-// === まとめ取得 ===
-// 起動時の4リクエストを1リクエストにまとめる。
-// GASは同一ユーザーの実行を直列化するので、並列に投げても待ち時間は足し算になる。
-// 1回の実行にまとめることで待ち時間そのものを削る。
-function getAll(date) {
-  return {
-    success: true,
-    data: {
-      products: getProducts().data,
-      categories: getCategories().data,
-      schedules: date ? getSchedules(date, date).data : [],
-      categoryOrders: date ? getCategoryOrders(date).data : []
-    }
-  };
-}
-
-// 日付を移動したときに必要な分だけ取得する
-function getDay(date) {
-  return {
-    success: true,
-    data: {
-      schedules: getSchedules(date, date).data,
-      categoryOrders: getCategoryOrders(date).data
-    }
-  };
-}
-
-// 書き込み結果に最新データを添付する。
-// 添付に失敗しても書き込み自体は成功しているので、result はそのまま返す。
-function attachRefresh(result, params) {
-  if (!result || result.success !== true) return result;
-
-  try {
-    if (params.date) {
-      var d = String(params.date);
-      result.day = {
-        date: d,
-        schedules: getSchedules(d, d).data,
-        categoryOrders: getCategoryOrders(d).data
-      };
-    }
-    if (params.action === 'saveProduct' || params.action === 'deleteProduct' ||
-        params.action === 'saveCategory' || params.action === 'deleteCategory') {
-      result.masters = {
-        products: getProducts().data,
-        categories: getCategories().data
-      };
-    }
-  } catch (err) {
-    result.refreshError = err.message;
-  }
-
-  return result;
 }
 
 // === スケジュール ===
@@ -340,12 +268,10 @@ function saveSchedule(params) {
   return { success: true };
 }
 
-// 削除は冪等にする（もともと無い＝すでに消えている＝成功扱い）。
-// 空セルに0を保存したときに「削除に失敗しました」と出ないようにするため。
 function deleteSchedule(params) {
   var sheet = getSheet('schedules');
   var lastRow = sheet.getLastRow();
-  if (lastRow < 2) return { success: true };
+  if (lastRow < 2) return { success: false, error: 'Schedule not found' };
   var data = sheet.getRange(1, 1, lastRow, 5).getValues();
   var targetDate = String(params.date);
   var targetProductId = String(params.productId);
@@ -358,7 +284,7 @@ function deleteSchedule(params) {
     }
   }
 
-  return { success: true };
+  return { success: false, error: 'Schedule not found' };
 }
 
 // === 商品マスタ ===
